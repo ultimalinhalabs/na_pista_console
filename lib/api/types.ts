@@ -8,6 +8,18 @@ export interface Category {
   updatedAt: string;
 }
 
+export interface Customer {
+  id: string;
+  organizationId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  status: "ACTIVE" | "ARCHIVED";
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Product {
   id: string;
   organizationId: string;

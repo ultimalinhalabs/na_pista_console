@@ -54,6 +54,9 @@ export default function OrganizationLayout({ children }: { children: React.React
             <Link href={`${base}/categories`} style={{ fontWeight: pathname.includes("/categories") ? 600 : 400 }}>
               Categorias
             </Link>
+            <Link href={`${base}/customers`} style={{ fontWeight: pathname.includes("/customers") ? 600 : 400 }}>
+              Clientes
+            </Link>
           </nav>
         </div>
         <span className="badge">{membership.roleKey}</span>

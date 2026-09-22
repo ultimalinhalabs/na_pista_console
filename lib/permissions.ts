@@ -10,10 +10,22 @@
  * na-pista/docs/f20-report.md "Known limitations").
  */
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  OWNER: ["products.read", "products.create", "products.update", "products.delete", "categories.read", "categories.create", "categories.update", "categories.delete"],
-  ADMIN: ["products.read", "products.create", "products.update", "products.delete", "categories.read", "categories.create", "categories.update", "categories.delete"],
-  MANAGER: ["products.read", "products.create", "products.update", "categories.read", "categories.create", "categories.update"],
-  STAFF: ["products.read", "categories.read"],
+  OWNER: [
+    "products.read", "products.create", "products.update", "products.delete",
+    "categories.read", "categories.create", "categories.update", "categories.delete",
+    "customers.read", "customers.create", "customers.update", "customers.delete",
+  ],
+  ADMIN: [
+    "products.read", "products.create", "products.update", "products.delete",
+    "categories.read", "categories.create", "categories.update", "categories.delete",
+    "customers.read", "customers.create", "customers.update", "customers.delete",
+  ],
+  MANAGER: [
+    "products.read", "products.create", "products.update",
+    "categories.read", "categories.create", "categories.update",
+    "customers.read", "customers.create", "customers.update",
+  ],
+  STAFF: ["products.read", "categories.read", "customers.read"],
 };
 
 export function roleCan(roleKey: string | undefined, permission: string): boolean {

@@ -14,18 +14,21 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "products.read", "products.create", "products.update", "products.delete",
     "categories.read", "categories.create", "categories.update", "categories.delete",
     "customers.read", "customers.create", "customers.update", "customers.delete",
+    "inventory.read", "inventory.create", "inventory.update",
   ],
   ADMIN: [
     "products.read", "products.create", "products.update", "products.delete",
     "categories.read", "categories.create", "categories.update", "categories.delete",
     "customers.read", "customers.create", "customers.update", "customers.delete",
+    "inventory.read", "inventory.create", "inventory.update",
   ],
   MANAGER: [
     "products.read", "products.create", "products.update",
     "categories.read", "categories.create", "categories.update",
     "customers.read", "customers.create", "customers.update",
+    "inventory.read", "inventory.create", "inventory.update",
   ],
-  STAFF: ["products.read", "categories.read", "customers.read"],
+  STAFF: ["products.read", "categories.read", "customers.read", "inventory.read"],
 };
 
 export function roleCan(roleKey: string | undefined, permission: string): boolean {

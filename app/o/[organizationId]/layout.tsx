@@ -57,6 +57,7 @@ export default function OrganizationLayout({ children }: { children: React.React
           <nav style={{ display: "flex", gap: 20 }}>
             {navItem(`${base}/products`, "/products", "Produtos")}
             {navItem(`${base}/categories`, "/categories", "Categorias")}
+            {navItem(`${base}/inventory`, "/inventory", "Inventário")}
             {navItem(`${base}/customers`, "/customers", "Clientes")}
           </nav>
         </div>

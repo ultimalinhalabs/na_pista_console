@@ -17,7 +17,7 @@ Browser
   ▼
 na-pista-console (this app)
   │  Authorization: Bearer <access_token>, HTTPS
-  ├──────────────► Na Pista API (/v1/organizations/:id/products, /categories)
+  ├──────────────► Na Pista API (/v1/organizations/:id/products, /categories, /customers, /inventory)
   └──────────────► UL Platform API (/v1/me — which organizations do I belong to)
 ```
 

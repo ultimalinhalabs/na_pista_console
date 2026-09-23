@@ -95,6 +95,11 @@ export default function ProductDetailPage() {
         <Link href={`/o/${params.organizationId}/products`}>← Produtos</Link>
       </p>
       <h1 style={{ fontSize: 20 }}>{product?.name}</h1>
+      {product && (
+        <p>
+          <Link href={`/o/${params.organizationId}/inventory/${product.id}`}>Ver inventário deste produto →</Link>
+        </p>
+      )}
 
       {error && (
         <div className="card error-text" style={{ marginBottom: 16 }}>

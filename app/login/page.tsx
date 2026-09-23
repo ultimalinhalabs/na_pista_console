@@ -26,8 +26,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="container" style={{ maxWidth: 360, paddingTop: 80 }}>
-      <h1 style={{ fontSize: 20, marginBottom: 16 }}>Entrar no Na Pista</h1>
+    <div className="container" style={{ maxWidth: 360, paddingTop: 96 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 32 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/mark.png" alt="Na Pista" width={56} height={66} />
+        <div style={{ textAlign: "center" }}>
+          <h1 style={{ fontSize: 18 }}>Entrar no Na Pista</h1>
+          <p style={{ color: "var(--np-foreground-subtle)", fontSize: 13, margin: "4px 0 0" }}>Ideias em Operação</p>
+        </div>
+      </div>
       <form onSubmit={handleSubmit} className="card">
         <div className="field">
           <label htmlFor="email">Email</label>

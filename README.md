@@ -4,6 +4,11 @@ The Na Pista **Default UI** (F18 ADR-008) — a consumer of the [Na Pista API](.
 authorization. Its own repository, on purpose: a Custom UI built by Última Linha for a specific client (or by
 the client itself) consumes the exact same API this app does, with no code shared and no fork of the core.
 
+**Visual identity: see [`DESIGN.md`](DESIGN.md).** Every screen in this app — present and future — follows the
+Na Pista brand ("Ideias em Operação": dark premium, black/charcoal, warm white, restrained champagne-gold
+accent). This is a product requirement, not a styling preference; new modules reuse the tokens/components
+documented there instead of inventing new ones.
+
 ## Architecture
 
 ```

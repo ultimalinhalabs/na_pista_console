@@ -40,23 +40,24 @@ export default function OrganizationLayout({ children }: { children: React.React
   }
 
   const base = `/o/${params.organizationId}`;
+  const navItem = (href: string, match: string, label: string) => (
+    <Link href={href} className={`nav-link${pathname.includes(match) ? " active" : ""}`}>
+      {label}
+    </Link>
+  );
   return (
     <div>
       <div className="topbar">
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <Link href="/" style={{ fontWeight: 600, textDecoration: "none", color: "inherit" }}>
+        <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+          <Link href="/" className="brand">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/mark-sm.png" alt="" width={22} height={26} />
             Na Pista
           </Link>
-          <nav style={{ display: "flex", gap: 12 }}>
-            <Link href={`${base}/products`} style={{ fontWeight: pathname.includes("/products") ? 600 : 400 }}>
-              Produtos
-            </Link>
-            <Link href={`${base}/categories`} style={{ fontWeight: pathname.includes("/categories") ? 600 : 400 }}>
-              Categorias
-            </Link>
-            <Link href={`${base}/customers`} style={{ fontWeight: pathname.includes("/customers") ? 600 : 400 }}>
-              Clientes
-            </Link>
+          <nav style={{ display: "flex", gap: 20 }}>
+            {navItem(`${base}/products`, "/products", "Produtos")}
+            {navItem(`${base}/categories`, "/categories", "Categorias")}
+            {navItem(`${base}/customers`, "/customers", "Clientes")}
           </nav>
         </div>
         <span className="badge">{membership.roleKey}</span>

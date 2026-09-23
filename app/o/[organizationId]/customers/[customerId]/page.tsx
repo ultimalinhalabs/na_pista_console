@@ -120,7 +120,7 @@ export default function CustomerDetailPage() {
           </div>
           <div className="field">
             <label>Estado</label>
-            <span className="badge">{customer.status}</span>
+            <span className={`badge${customer.status === "ACTIVE" ? " badge-success" : ""}`}>{customer.status}</span>
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>

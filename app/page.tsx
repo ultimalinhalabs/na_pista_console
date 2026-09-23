@@ -21,7 +21,11 @@ export default function HomePage() {
   return (
     <div className="container">
       <div className="topbar" style={{ marginBottom: 24 }}>
-        <strong>Na Pista</strong>
+        <span className="brand">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/mark-sm.png" alt="" width={22} height={26} />
+          Na Pista
+        </span>
         <button className="btn" onClick={signOut}>
           Sair
         </button>

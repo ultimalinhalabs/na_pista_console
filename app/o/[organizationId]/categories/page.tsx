@@ -105,7 +105,7 @@ export default function CategoriesPage() {
                 <td>{c.name}</td>
                 <td>{c.description ?? "—"}</td>
                 <td>
-                  <span className="badge">{c.status}</span>
+                  <span className={`badge${c.status === "ACTIVE" ? " badge-success" : ""}`}>{c.status}</span>
                 </td>
                 {roleCan(roleKey, "categories.delete") && (
                   <td>

@@ -1,122 +1,239 @@
+/*
+ * Na Pista visual identity — see ../DESIGN.md (normative, not decorative).
+ * Tokens sampled directly from the official brand assets (assets/badge_*,
+ * assets/mark_*) — never invented. Every page consumes these tokens and
+ * the component classes below; no page defines its own colors.
+ */
 :root {
-  --bg: #f8f9fb;
-  --surface: #ffffff;
-  --border: #e2e5eb;
-  --text: #1a1d23;
-  --text-secondary: #5a6070;
-  --primary: #2f6fed;
-  --primary-hover: #2559c4;
-  --danger: #d64545;
-  --radius: 8px;
-}
+  /* Base / surfaces — warm, deep black derived from the logo badge */
+  --np-background: #0a0908;
+  --np-background-carvao: #100e0b;
+  --np-surface: #18150f;
+  --np-surface-elevated: #211c15;
+  --np-surface-graphite: #2a2724;
+  --np-border: #332e27;
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #14161a;
-    --surface: #1c1f26;
-    --border: #2c3038;
-    --text: #eef0f4;
-    --text-secondary: #9aa1b0;
-  }
+  /* Typography */
+  --np-foreground: #faf3e7;
+  --np-foreground-muted: #b4ab9c;
+  --np-foreground-subtle: #78705f;
+
+  /* Brand accent — sampled from the mark's gold */
+  --np-gold: #ce9a5b;
+  --np-gold-hover: #e1a860;
+  --np-gold-pressed: #a87a42;
+  --np-gold-muted-bg: rgba(206, 154, 91, 0.12);
+  --np-gold-contrast: #16130d; /* text on top of a solid gold surface */
+
+  /* Semantic — deliberately distinct from gold (DESIGN.md §4) */
+  --np-success: #3fae79;
+  --np-success-bg: rgba(63, 174, 121, 0.12);
+  --np-warning: #e0a030;
+  --np-warning-bg: rgba(224, 160, 48, 0.12);
+  --np-destructive: #d1483f;
+  --np-destructive-bg: rgba(209, 72, 63, 0.12);
+
+  /* Spacing / radius / shadow */
+  --np-space-1: 4px;
+  --np-space-2: 8px;
+  --np-space-3: 12px;
+  --np-space-4: 16px;
+  --np-space-5: 24px;
+  --np-space-6: 32px;
+  --np-space-7: 48px;
+  --np-radius-sm: 6px;
+  --np-radius: 10px;
+  --np-radius-lg: 16px;
+  --np-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--np-background);
+  color: var(--np-foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: var(--primary);
+  color: var(--np-gold);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--np-gold-hover);
+}
+
+h1,
+h2,
+h3 {
+  color: var(--np-foreground);
+  font-weight: 600;
+  margin: 0;
 }
 
 .container {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: var(--np-space-5) var(--np-space-4);
 }
 
+/* ---------- Surfaces ---------- */
+
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
+  background: var(--np-surface);
+  border: 1px solid var(--np-border);
+  border-radius: var(--np-radius);
+  padding: var(--np-space-4);
+}
+
+.card-elevated {
+  background: var(--np-surface-elevated);
+  border: 1px solid var(--np-border);
+  border-radius: var(--np-radius);
+  padding: var(--np-space-4);
+  box-shadow: var(--np-shadow);
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  padding: var(--np-space-3) var(--np-space-4);
+  border-bottom: 1px solid var(--np-border);
+  background: var(--np-surface);
 }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--np-space-2);
+  font-weight: 600;
+  color: var(--np-foreground);
+  letter-spacing: 0.01em;
+}
+
+.brand img {
+  display: block;
+}
+
+/* ---------- Buttons ---------- */
 
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  gap: var(--np-space-2);
+  padding: 9px 16px;
+  border-radius: var(--np-radius-sm);
+  border: 1px solid var(--np-border);
+  background: transparent;
+  color: var(--np-foreground);
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.btn:hover {
+  border-color: var(--np-foreground-subtle);
+  background: var(--np-surface-graphite);
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--np-background), 0 0 0 4px var(--np-gold);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .btn-primary {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
+  background: var(--np-gold);
+  border-color: var(--np-gold);
+  color: var(--np-gold-contrast);
+  font-weight: 600;
 }
 .btn-primary:hover {
-  background: var(--primary-hover);
+  background: var(--np-gold-hover);
+  border-color: var(--np-gold-hover);
+  color: var(--np-gold-contrast);
+}
+.btn-primary:active {
+  background: var(--np-gold-pressed);
+  border-color: var(--np-gold-pressed);
 }
 
 .btn-danger {
-  color: var(--danger);
-  border-color: var(--danger);
+  color: var(--np-destructive);
+  border-color: var(--np-destructive);
+  background: transparent;
+}
+.btn-danger:hover {
+  background: var(--np-destructive-bg);
+  border-color: var(--np-destructive);
+  color: var(--np-destructive);
 }
 
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* ---------- Forms ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--np-space-1);
+  margin-bottom: var(--np-space-3);
+}
+
+.field label {
+  font-size: 13px;
+  color: var(--np-foreground-muted);
 }
 
 .input,
 .textarea,
 .select {
   width: 100%;
-  padding: 8px 10px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  padding: 9px 12px;
+  border-radius: var(--np-radius-sm);
+  border: 1px solid var(--np-border);
+  background: var(--np-background-carvao);
+  color: var(--np-foreground);
   font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--np-foreground-subtle);
 }
-
-.field label {
-  font-size: 13px;
-  color: var(--text-secondary);
+.input:focus,
+.textarea:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--np-gold);
+  box-shadow: 0 0 0 3px var(--np-gold-muted-bg);
+}
+.input:disabled,
+.textarea:disabled,
+.select:disabled {
+  color: var(--np-foreground-subtle);
+  background: var(--np-surface);
 }
 
 .error-text {
-  color: var(--danger);
+  color: var(--np-destructive);
   font-size: 13px;
 }
+
+/* ---------- Tables ---------- */
 
 table {
   width: 100%;
@@ -126,39 +243,92 @@ table {
 th,
 td {
   text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: var(--np-space-3) var(--np-space-3);
+  border-bottom: 1px solid var(--np-border);
   font-size: 14px;
 }
 
 th {
-  color: var(--text-secondary);
+  color: var(--np-foreground-muted);
   font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
+
+tbody tr:hover {
+  background: var(--np-surface-graphite);
+}
+
+/* ---------- Badges ---------- */
 
 .badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
-  background: var(--border);
+  font-weight: 500;
+  background: var(--np-surface-graphite);
+  color: var(--np-foreground-muted);
+  border: 1px solid var(--np-border);
 }
+
+.badge-gold {
+  background: var(--np-gold-muted-bg);
+  color: var(--np-gold);
+  border-color: transparent;
+}
+.badge-success {
+  background: var(--np-success-bg);
+  color: var(--np-success);
+  border-color: transparent;
+}
+.badge-warning {
+  background: var(--np-warning-bg);
+  color: var(--np-warning);
+  border-color: transparent;
+}
+.badge-destructive {
+  background: var(--np-destructive-bg);
+  color: var(--np-destructive);
+  border-color: transparent;
+}
+
+/* ---------- States ---------- */
 
 .empty-state {
   text-align: center;
-  padding: 48px 16px;
-  color: var(--text-secondary);
+  padding: var(--np-space-7) var(--np-space-4);
+  color: var(--np-foreground-muted);
 }
 
 .toolbar {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--np-space-2);
+  margin-bottom: var(--np-space-4);
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .request-ref {
   font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 8px;
+  color: var(--np-foreground-subtle);
+  margin-top: var(--np-space-2);
+}
+
+/* ---------- Navigation ---------- */
+
+.nav-link {
+  color: var(--np-foreground-muted);
+  font-size: 14px;
+  padding: var(--np-space-2) 0;
+  border-bottom: 2px solid transparent;
+}
+.nav-link:hover {
+  color: var(--np-foreground);
+}
+.nav-link.active {
+  color: var(--np-gold);
+  border-bottom-color: var(--np-gold);
+  font-weight: 600;
 }

@@ -133,7 +133,7 @@ export default function ProductDetailPage() {
           </div>
           <div className="field">
             <label>Estado</label>
-            <span className="badge">{product.status}</span>
+            <span className={`badge${product.status === "ACTIVE" ? " badge-success" : ""}`}>{product.status}</span>
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>

@@ -126,7 +126,7 @@ export default function ProductsPage() {
                 </td>
                 <td>{categoryName(p.categoryId)}</td>
                 <td>
-                  <span className="badge">{p.status}</span>
+                  <span className={`badge${p.status === "ACTIVE" ? " badge-success" : ""}`}>{p.status}</span>
                 </td>
               </tr>
             ))}

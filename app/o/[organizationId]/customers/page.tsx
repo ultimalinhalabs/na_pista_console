@@ -103,7 +103,7 @@ export default function CustomersPage() {
                 </td>
                 <td>{[c.email, c.phone].filter(Boolean).join(" · ") || "—"}</td>
                 <td>
-                  <span className="badge">{c.status}</span>
+                  <span className={`badge${c.status === "ACTIVE" ? " badge-success" : ""}`}>{c.status}</span>
                 </td>
               </tr>
             ))}

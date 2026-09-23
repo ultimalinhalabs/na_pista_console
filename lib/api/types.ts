@@ -97,3 +97,41 @@ export interface Order {
 
 /** The list endpoint returns Orders without their items (F22/F21 list-view convention). */
 export type OrderSummary = Omit<Order, "items">;
+
+/** F24A/ADR-033: Service is deliberately NOT a Product clone — no categoryId/unit, has durationMinutes. */
+export interface Service {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  /** ADR-034: a plain integer — never a decimal string, unlike money/quantity fields. */
+  durationMinutes: number;
+  /** ADR-034: nullable — a Service without a price is a valid catalog state ("not yet priced"). */
+  price: string | null;
+  status: "ACTIVE" | "ARCHIVED";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** F25A/ADR-036: Professional is deliberately NOT a Product/Service clone and NOT a Platform User — no userId. */
+export interface Professional {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  phone: string | null;
+  email: string | null;
+  status: "ACTIVE" | "ARCHIVED";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** ADR-037: a Service a Professional is associated with, joined with display fields (name/duration/price/status) — never a raw FK on either side. */
+export interface AssociatedService {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  price: string | null;
+  status: "ACTIVE" | "ARCHIVED";
+  associatedAt: string;
+}

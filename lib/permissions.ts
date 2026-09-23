@@ -16,6 +16,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "customers.read", "customers.create", "customers.update", "customers.delete",
     "inventory.read", "inventory.create", "inventory.update",
     "orders.read", "orders.create", "orders.update",
+    "services.read", "services.create", "services.update",
+    "professionals.read", "professionals.create", "professionals.update",
   ],
   ADMIN: [
     "products.read", "products.create", "products.update", "products.delete",
@@ -23,6 +25,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "customers.read", "customers.create", "customers.update", "customers.delete",
     "inventory.read", "inventory.create", "inventory.update",
     "orders.read", "orders.create", "orders.update",
+    "services.read", "services.create", "services.update",
+    "professionals.read", "professionals.create", "professionals.update",
   ],
   MANAGER: [
     "products.read", "products.create", "products.update",
@@ -30,8 +34,13 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "customers.read", "customers.create", "customers.update",
     "inventory.read", "inventory.create", "inventory.update",
     "orders.read", "orders.create", "orders.update",
+    "services.read", "services.create", "services.update",
+    "professionals.read", "professionals.create", "professionals.update",
   ],
-  STAFF: ["products.read", "categories.read", "customers.read", "inventory.read", "orders.read"],
+  STAFF: [
+    "products.read", "categories.read", "customers.read", "inventory.read", "orders.read",
+    "services.read", "professionals.read",
+  ],
 };
 
 export function roleCan(roleKey: string | undefined, permission: string): boolean {

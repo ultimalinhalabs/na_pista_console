@@ -21,6 +21,7 @@ export default function ProductDetailPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [price, setPrice] = useState("");
   const [error, setError] = useState<Error | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -37,6 +38,7 @@ export default function ProductDetailPage() {
       setName(p.name);
       setDescription(p.description ?? "");
       setCategoryId(p.categoryId ?? "");
+      setPrice(p.price ?? "");
       setCategories(cats);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setNotFound(true);
@@ -61,6 +63,7 @@ export default function ProductDetailPage() {
         name,
         description: description || null,
         categoryId: categoryId || null,
+        price: price ? Number(price) : null,
       });
       setProduct(updated);
     } catch (err) {
@@ -135,6 +138,20 @@ export default function ProductDetailPage() {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="field">
+            <label htmlFor="price">Preço (AOA)</label>
+            <input
+              id="price"
+              className="input"
+              type="number"
+              min="0"
+              step="0.01"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              disabled={!canEdit}
+              placeholder="Sem preço (não pode ser vendido em Pedidos até ter um)"
+            />
           </div>
           <div className="field">
             <label>Estado</label>

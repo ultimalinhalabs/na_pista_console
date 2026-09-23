@@ -17,14 +17,17 @@ export function getProduct(organizationId: string, productId: string) {
   return callNaPista<Product>("GET", `/organizations/${organizationId}/products/${productId}`);
 }
 
-export function createProduct(organizationId: string, input: { name: string; description?: string; categoryId?: string }) {
+export function createProduct(
+  organizationId: string,
+  input: { name: string; description?: string; categoryId?: string; price?: number | string },
+) {
   return callNaPista<Product>("POST", `/organizations/${organizationId}/products`, input);
 }
 
 export function updateProduct(
   organizationId: string,
   productId: string,
-  patch: { name?: string; description?: string | null; categoryId?: string | null; status?: "ACTIVE" | "ARCHIVED" },
+  patch: { name?: string; description?: string | null; categoryId?: string | null; status?: "ACTIVE" | "ARCHIVED"; price?: number | string | null },
 ) {
   return callNaPista<Product>("PATCH", `/organizations/${organizationId}/products/${productId}`, patch);
 }

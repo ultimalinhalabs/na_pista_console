@@ -29,6 +29,8 @@ export interface Product {
   name: string;
   description: string | null;
   unit: ProductUnit;
+  /** ADR-031: nullable — a Product without a price cannot be added to an Order yet. */
+  price: string | null;
   status: "ACTIVE" | "ARCHIVED";
   createdAt: string;
   updatedAt: string;
@@ -60,3 +62,38 @@ export interface StockMovement {
   actorId: string;
   createdAt: string;
 }
+
+/** F23 (ADR-032): DRAFT -> CONFIRMED -> COMPLETED; CANCELED from DRAFT or CONFIRMED. */
+export type OrderStatus = "DRAFT" | "CONFIRMED" | "COMPLETED" | "CANCELED";
+
+export interface OrderItem {
+  id: string;
+  organizationId: string;
+  orderId: string;
+  productId: string;
+  /** ADR-031: a snapshot taken when the item was added — never the Product's current name. */
+  productName: string;
+  quantity: string;
+  /** ADR-031: a snapshot taken when the item was added — never the Product's current price. */
+  unitPrice: string;
+  subtotal: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Order {
+  id: string;
+  organizationId: string;
+  customerId: string | null;
+  status: OrderStatus;
+  /** ADR-030: a creation-time snapshot of the Organization's operating currency (AOA in this phase). */
+  currency: string;
+  subtotal: string;
+  total: string;
+  items: OrderItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The list endpoint returns Orders without their items (F22/F21 list-view convention). */
+export type OrderSummary = Omit<Order, "items">;

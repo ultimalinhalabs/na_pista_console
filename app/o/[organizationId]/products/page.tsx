@@ -115,6 +115,7 @@ export default function ProductsPage() {
             <tr>
               <th>Nome</th>
               <th>Categoria</th>
+              <th>Preço</th>
               <th>Estado</th>
             </tr>
           </thead>
@@ -125,6 +126,7 @@ export default function ProductsPage() {
                   <Link href={`/o/${params.organizationId}/products/${p.id}`}>{p.name}</Link>
                 </td>
                 <td>{categoryName(p.categoryId)}</td>
+                <td>{p.price !== null ? `${p.price} AOA` : <span className="badge badge-warning">Sem preço</span>}</td>
                 <td>
                   <span className={`badge${p.status === "ACTIVE" ? " badge-success" : ""}`}>{p.status}</span>
                 </td>
@@ -172,6 +174,7 @@ function CreateProductForm({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [price, setPrice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<ApiError | Error | null>(null);
 
@@ -188,6 +191,7 @@ function CreateProductForm({
         name,
         description: description || undefined,
         categoryId: categoryId || undefined,
+        price: price ? Number(price) : undefined,
       });
       onCreated();
     } catch (err) {
@@ -217,6 +221,10 @@ function CreateProductForm({
             </option>
           ))}
         </select>
+      </div>
+      <div className="field">
+        <label htmlFor="price">Preço (AOA)</label>
+        <input id="price" className="input" type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Sem preço (não pode ser vendido em Pedidos até ter um)" />
       </div>
       {error && <ErrorBanner error={error} />}
       <div style={{ display: "flex", gap: 8 }}>

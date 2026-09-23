@@ -62,6 +62,7 @@ export default function OrganizationLayout({ children }: { children: React.React
             {navItem(`${base}/orders`, "/orders", "Pedidos")}
             {navItem(`${base}/services`, "/services", "Serviços")}
             {navItem(`${base}/professionals`, "/professionals", "Profissionais")}
+            {navItem(`${base}/settings`, "/settings", "Definições")}
           </nav>
         </div>
         <span className="badge">{membership.roleKey}</span>

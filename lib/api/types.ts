@@ -135,3 +135,51 @@ export interface AssociatedService {
   status: "ACTIVE" | "ARCHIVED";
   associatedAt: string;
 }
+
+/** ADR-040: `null` means "not configured yet" — never a silent default (server/browser/UTC). IANA identifier only, e.g. "Africa/Luanda". */
+export interface OrganizationSettings {
+  organizationId: string;
+  timezone: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** ADR-039: one row per interval — wall-clock local time ("HH:mm"), no timezone attached. dayOfWeek: 0=Sunday..6=Saturday. */
+export interface ScheduleRule {
+  id: string;
+  organizationId: string;
+  professionalId: string;
+  dayOfWeek: number;
+  startLocalTime: string;
+  endLocalTime: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** ADR-039: both times set = an available interval (fully replaces the weekly rule for that date); both `null` = a closed-marker (fully unavailable that date). */
+export interface ScheduleException {
+  id: string;
+  organizationId: string;
+  professionalId: string;
+  date: string;
+  startLocalTime: string | null;
+  endLocalTime: string | null;
+  createdAt: string;
+}
+
+export interface AvailabilityInterval {
+  start: string;
+  end: string;
+}
+
+export interface AvailabilityDay {
+  date: string;
+  workingIntervals: AvailabilityInterval[];
+  /** Present only when a serviceId was supplied — advisory only, NOT a booking guarantee (no Appointment conflicts exist yet, ADR-041). */
+  serviceStartTimes?: string[];
+}
+
+export interface Availability {
+  timezone: string;
+  days: AvailabilityDay[];
+}

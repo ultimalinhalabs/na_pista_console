@@ -2,239 +2,158 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSession } from "../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../lib/permissions";
 import { listCategories } from "../../../../lib/api/categories";
 import { createProduct, listProducts } from "../../../../lib/api/products";
-import { ApiError } from "../../../../lib/api/errors";
-import type { Category, Product } from "../../../../lib/api/types";
+import type { Category } from "../../../../lib/api/types";
+import { useAsync } from "../../../../lib/useAsync";
+import { statusInfo } from "../../../../lib/status";
+import { formatMoney, unitLabel } from "../../../../lib/format";
+import { LIST_LIMIT, ListPage, StatusFilter, useCreateFromUrl, type StatusFilterValue } from "../../../../components/patterns/ListPage";
+import { Badge } from "../../../../components/ui/Data";
+import { Button } from "../../../../components/ui/Button";
+import { Field, SearchInput } from "../../../../components/ui/Form";
+import { Modal } from "../../../../components/ui/Overlay";
+import { ErrorNotice } from "../../../../components/ui/Feedback";
+import { useToast } from "../../../../components/ui/Toast";
 
 export default function ProductsPage() {
   const params = useParams<{ organizationId: string }>();
+  const org = params.organizationId;
   const { identity } = useSession();
-  const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
-
-  const [products, setProducts] = useState<Product[] | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"" | "ACTIVE" | "ARCHIVED">("ACTIVE");
+  const roleKey = identity?.memberships.find((m) => m.organizationId === org)?.roleKey;
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ACTIVE");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [q, setQ] = useState("");
-  const [error, setError] = useState<ApiError | Error | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-
-  async function load() {
-    setError(null);
-    try {
-      const [productList, categoryList] = await Promise.all([
-        listProducts(params.organizationId, {
-          status: statusFilter || undefined,
-          categoryId: categoryFilter || undefined,
-          q: q || undefined,
-        }),
-        listCategories(params.organizationId),
-      ]);
-      setProducts(productList);
-      setCategories(categoryList);
-    } catch (err) {
-      setError(err as Error);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, categoryFilter]);
-
-  const categoryName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "—";
+  const [appliedQ, setAppliedQ] = useState("");
+  const [showCreate, setShowCreate] = useCreateFromUrl();
+  const products = useAsync(
+    () => listProducts(org, { status: statusFilter || undefined, categoryId: categoryFilter || undefined, q: appliedQ || undefined, limit: LIST_LIMIT }),
+    [org, statusFilter, categoryFilter, appliedQ],
+  );
+  const categories = useAsync(() => listCategories(org, { limit: LIST_LIMIT }), [org]);
+  const categoryName = (id: string | null) => categories.data?.find((c) => c.id === id)?.name ?? "—";
+  const canCreate = roleCan(roleKey, "products.create");
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 style={{ fontSize: 20, margin: 0, flex: 1 }}>Produtos</h1>
-        {roleCan(roleKey, "products.create") && (
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+    <ListPage
+      title="Produtos"
+      description="Catálogo de produtos. Um produto sem preço não pode ser adicionado a pedidos."
+      moduleName="Produtos"
+      primaryAction={
+        canCreate ? (
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
             + Novo produto
-          </button>
-        )}
-      </div>
-
-      <div className="toolbar">
-        <input
-          className="input"
-          placeholder="Pesquisar por nome…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && load()}
-          style={{ maxWidth: 240 }}
-        />
-        <select
-          className="select"
-          style={{ maxWidth: 160 }}
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as "" | "ACTIVE" | "ARCHIVED")}
-        >
-          <option value="">Todos os estados</option>
-          <option value="ACTIVE">Activos</option>
-          <option value="ARCHIVED">Arquivados</option>
-        </select>
-        <select className="select" style={{ maxWidth: 200 }} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-          <option value="">Todas as categorias</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <button className="btn" onClick={load}>
-          Filtrar
-        </button>
-      </div>
-
-      {error && <ErrorBanner error={error} />}
-
+          </Button>
+        ) : undefined
+      }
+      filters={
+        <>
+          <SearchInput label="Pesquisar por nome…" value={q} onChange={(e) => setQ(e.target.value)} onSubmit={() => setAppliedQ(q.trim())} />
+          <StatusFilter value={statusFilter} onChange={setStatusFilter} />
+          <select className="select" aria-label="Categoria" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <option value="">Todas as categorias</option>
+            {(categories.data ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <Button onClick={() => setAppliedQ(q.trim())}>Filtrar</Button>
+        </>
+      }
+      state={products}
+      rowKey={(p) => p.id}
+      empty={{ title: "Nenhum produto encontrado." }}
+      columns={[
+        { key: "name", header: "Nome", wrap: true, cell: (p) => <Link href={`/o/${org}/products/${p.id}`}>{p.name}</Link> },
+        { key: "category", header: "Categoria", cell: (p) => categoryName(p.categoryId) },
+        { key: "unit", header: "Unidade", cell: (p) => unitLabel(p.unit) },
+        { key: "price", header: "Preço", numeric: true, cell: (p) => (p.price !== null ? formatMoney(p.price) : <Badge tone="warning">Sem preço</Badge>) },
+        { key: "status", header: "Estado", cell: (p) => <Badge tone={statusInfo("catalog", p.status).tone}>{statusInfo("catalog", p.status).label}</Badge> },
+      ]}
+    >
       {showCreate && (
-        <CreateProductForm
-          organizationId={params.organizationId}
-          categories={categories}
+        <CreateProductDialog
+          organizationId={org}
+          categories={categories.data ?? []}
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
-            load();
+            products.reload();
           }}
         />
       )}
-
-      {products === null && !error ? (
-        <div className="empty-state">A carregar…</div>
-      ) : products && products.length === 0 ? (
-        <div className="empty-state card">Nenhum produto encontrado.</div>
-      ) : products ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>Categoria</th>
-              <th>Preço</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <Link href={`/o/${params.organizationId}/products/${p.id}`}>{p.name}</Link>
-                </td>
-                <td>{categoryName(p.categoryId)}</td>
-                <td>{p.price !== null ? `${p.price} AOA` : <span className="badge badge-warning">Sem preço</span>}</td>
-                <td>
-                  <span className={`badge${p.status === "ACTIVE" ? " badge-success" : ""}`}>{p.status}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-    </div>
+    </ListPage>
   );
 }
 
-function ErrorBanner({ error }: { error: ApiError | Error }) {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return <div className="card error-text">A tua sessão expirou. Por favor entra de novo.</div>;
-    if (error.status === 403)
-      return (
-        <div className="card error-text">
-          {error.code === "ENTITLEMENT_REQUIRED"
-            ? "Esta organização não tem o módulo de Produtos activo no seu plano."
-            : "Não tens permissão para esta operação."}
-        </div>
-      );
-    return (
-      <div className="card error-text">
-        {error.message}
-        {error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-      </div>
-    );
-  }
-  return <div className="card error-text">{error.message}</div>;
-}
-
-function CreateProductForm({
-  organizationId,
-  categories,
-  onClose,
-  onCreated,
-}: {
-  organizationId: string;
-  categories: Category[];
-  onClose: () => void;
-  onCreated: () => void;
-}) {
+function CreateProductDialog({ organizationId, categories, onClose, onCreated }: { organizationId: string; categories: Category[]; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [price, setPrice] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<ApiError | Error | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError(new Error("O nome é obrigatório"));
+      setNameError("O nome é obrigatório");
       return;
     }
+    setNameError(null);
     setSubmitting(true);
     setError(null);
     try {
-      await createProduct(organizationId, {
-        name,
-        description: description || undefined,
-        categoryId: categoryId || undefined,
-        price: price ? Number(price) : undefined,
-      });
+      await createProduct(organizationId, { name, description: description || undefined, categoryId: categoryId || undefined, price: price.trim() || undefined });
+      toast.success("Produto criado.");
       onCreated();
     } catch (err) {
-      setError(err as Error);
+      setError(err);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card" style={{ marginBottom: 16 }}>
-      <div className="field">
-        <label htmlFor="name">Nome</label>
-        <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-      </div>
-      <div className="field">
-        <label htmlFor="description">Descrição</label>
-        <textarea id="description" className="textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-      <div className="field">
-        <label htmlFor="category">Categoria</label>
-        <select id="category" className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-          <option value="">Sem categoria</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="price">Preço (AOA)</label>
-        <input id="price" className="input" type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Sem preço (não pode ser vendido em Pedidos até ter um)" />
-      </div>
-      {error && <ErrorBanner error={error} />}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? "A criar…" : "Criar"}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Cancelar
-        </button>
-      </div>
-    </form>
+    <Modal open onClose={onClose} title="Novo produto">
+      <form onSubmit={handleSubmit} noValidate>
+        <Field label="Nome" error={nameError}>
+          <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} data-autofocus required />
+        </Field>
+        <Field label="Descrição">
+          <textarea id="description" className="textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        <div className="grid-2">
+          <Field label="Categoria">
+            <select id="category" className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">Sem categoria</option>
+              {categories
+                .filter((c) => c.status === "ACTIVE")
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label="Preço (AOA)" hint="Vazio = sem preço (não vendável em pedidos até ter um)">
+            <input id="price" className="input" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(",", "."))} placeholder="ex.: 1500.00" />
+          </Field>
+        </div>
+        {error ? <ErrorNotice error={error} /> : null}
+        <div className="modal-footer">
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button type="submit" variant="primary" loading={submitting}>
+            {submitting ? "A criar…" : "Criar"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

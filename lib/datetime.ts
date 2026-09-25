@@ -21,19 +21,26 @@ function parts(iso: string | Date, timeZone: string) {
   return out;
 }
 
-/** "YYYY-MM-DD" of an instant, in the organization's calendar. */
+function isValid(iso: string | Date): boolean {
+  return !Number.isNaN((typeof iso === "string" ? new Date(iso) : iso).getTime());
+}
+
+/** "YYYY-MM-DD" of an instant, in the organization's calendar ("—" for a missing/invalid value — never a crash). */
 export function localDate(iso: string | Date, timeZone: string): string {
+  if (!isValid(iso)) return "—";
   const p = parts(iso, timeZone);
   return `${p.year}-${p.month}-${p.day}`;
 }
 
 /** "HH:mm" of an instant, on the organization's wall clock. */
 export function localTime(iso: string | Date, timeZone: string): string {
+  if (!isValid(iso)) return "—";
   const p = parts(iso, timeZone);
   return `${p.hour}:${p.minute}`;
 }
 
 export function localDateTime(iso: string | Date, timeZone: string): string {
+  if (!isValid(iso)) return "—";
   return `${localDate(iso, timeZone)} ${localTime(iso, timeZone)}`;
 }
 

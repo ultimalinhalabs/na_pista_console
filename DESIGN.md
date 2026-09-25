@@ -119,6 +119,28 @@ inline de cor. Qualquer módulo novo reutiliza estas classes:
 - `.topbar`, `.nav-link` (activo = dourado)
 - `.empty-state`, `.error-text`, `.request-ref`
 
+### 7.1 Componentes React (F29)
+
+Os tokens e classes acima continuam a ser a base; desde a F29 as páginas consomem-nos através de componentes
+React em `components/` — nenhuma página volta a montar à mão estes padrões:
+
+| Camada | Componentes | Contrato |
+|---|---|---|
+| `components/ui/Button` | `Button`, `ButtonLink`, `Spinner` | `variant` (secondary por omissão/primary/danger/ghost), `size`; `loading` desactiva, `aria-busy` e impede duplo envio |
+| `components/ui/Form` | `Field`, `FormSection`, `SearchInput` | `Field` liga label/hint/erro ao controlo (`id`, `aria-describedby`, `aria-invalid`); erro com `role="alert"` |
+| `components/ui/Feedback` | `Alert`, `EmptyState`, `Skeleton`, `TableSkeleton`, `StatusIndicator`, `ErrorNotice`, `ModuleUnavailable`, `PermissionDenied`, `ResultLimitNotice` | `ErrorNotice` = mensagem contextual (`lib/errors.ts`) + detalhe seguro do servidor + referência do pedido; nunca SQL/stack/constraint |
+| `components/ui/Overlay` | `Modal`, `ConfirmDialog`, `Drawer` | focus trap, Esc fecha; `ConfirmDialog` executa a acção, mostra o erro e **fica aberto** em falha |
+| `components/ui/Menu` | `Dropdown`, `Tooltip` | `role="menu"`, setas, Esc |
+| `components/ui/Toast` | `ToastProvider`, `useToast` | feedback transitório em região `role="status"` |
+| `components/ui/Data` | `Badge`, `DataTable`, `Stat`, `Timeline`, `DetailList`, `CopyButton` | `DataTable`: skeleton, vazio, `th scope="col"`, scroll horizontal dentro de `.table-wrap` |
+| `components/ui/Tabs` | `Tabs` | `role="tablist"`, setas |
+| `components/patterns` | `PageHeader`, `ResourceHeader`, `Breadcrumb`, `Section`, `FilterBar`, `ListPage`, `StatusFilter`, `DetailGuard` | listas limitadas a `LIST_LIMIT` (100) com `ResultLimitNotice` — sem paginação fingida; `DetailGuard` trata carregamento/404/permissão/entitlement |
+| `components/shell` | `AppShell`, `CommandMenu` | sidebar agrupada (`lib/navigation.ts`), troca de organização, menu do utilizador, gaveta móvel, Ctrl/⌘+K, redirecção em sessão expirada |
+
+Vocabulário de estados: `lib/status.ts` (`statusInfo(domínio, valor)` → rótulo pt-PT + tom de badge).
+Dinheiro: `formatMoney` (string decimal → `1 850,50 Kz`, sem aritmética de vírgula flutuante); quantidades:
+`displayQuantity` (apresentação) vs `formatQuantity` (valor canónico enviado à API).
+
 ## 8. Aplicação obrigatória
 
 - Esta identidade aplica-se a **todo** o `na-pista-console`, presente e futuro.

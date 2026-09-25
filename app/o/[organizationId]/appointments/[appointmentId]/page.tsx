@@ -13,6 +13,8 @@ import type { Appointment, BookableSlot, BookableSlots, Customer, Professional }
 import { APPOINTMENT_STATUS_LABELS, appointmentStatusBadge, localDate, localDateTime, localTime } from "../../../../../lib/datetime";
 import { ErrorNotice, SlotPicker, TimezoneMissing, useOrganizationTimezone } from "../../../../../lib/appointments/components";
 import { isConflict } from "../../../../../lib/appointments/messages";
+import { formatMoney } from "../../../../../lib/format";
+import { PageHeader } from "../../../../../components/patterns/Page";
 
 /**
  * F27 appointment detail (F27A §42). Mutations are shown only when the
@@ -169,10 +171,7 @@ export default function AppointmentDetailPage() {
 
   return (
     <div>
-      <p>
-        <Link href={`/o/${params.organizationId}/appointments`}>← Marcações</Link>
-      </p>
-      <h1 style={{ fontSize: 20 }}>Marcação</h1>
+      <PageHeader title="Marcação" breadcrumbs={[{ label: "Marcações", href: `/o/${params.organizationId}/appointments` }, { label: appointment && timezone ? `${localDate(appointment.startAt, timezone)} ${localTime(appointment.startAt, timezone)}` : "Marcação" }]} />
 
       {tz.error && <ErrorNotice error={tz.error} />}
 
@@ -199,7 +198,7 @@ export default function AppointmentDetailPage() {
           <div className="field">
             <label>Serviço (no momento da marcação)</label>
             <div>
-              {appointment.serviceName} — {appointment.servicePrice !== null ? `${appointment.servicePrice} ${appointment.currency}` : "sem preço"}
+              {appointment.serviceName} — {appointment.servicePrice !== null ? formatMoney(appointment.servicePrice, appointment.currency) : "sem preço"}
             </div>
           </div>
           {appointment.status === "CANCELED" && (

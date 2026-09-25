@@ -1,155 +1,184 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession } from "../../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../../lib/permissions";
 import { archiveCustomer, getCustomer, updateCustomer } from "../../../../../lib/api/customers";
-import { ApiError } from "../../../../../lib/api/errors";
-import { AppointmentsSection } from "../../../../../lib/appointments/components";
+import { listOrders } from "../../../../../lib/api/orders";
 import type { Customer } from "../../../../../lib/api/types";
+import { useAsync } from "../../../../../lib/useAsync";
+import { useUnsavedChanges } from "../../../../../lib/useUnsavedChanges";
+import { statusInfo } from "../../../../../lib/status";
+import { formatMoney } from "../../../../../lib/format";
+import { localDateTime } from "../../../../../lib/datetime";
+import { AppointmentsSection, useOrganizationTimezone } from "../../../../../lib/appointments/components";
+import { DetailGuard } from "../../../../../components/patterns/DetailGuard";
+import { ResourceHeader, Section } from "../../../../../components/patterns/Page";
+import { Badge, DataTable, Timeline } from "../../../../../components/ui/Data";
+import { ErrorNotice } from "../../../../../components/ui/Feedback";
+import { Button } from "../../../../../components/ui/Button";
+import { Field } from "../../../../../components/ui/Form";
+import { ConfirmDialog } from "../../../../../components/ui/Overlay";
+import { useToast } from "../../../../../components/ui/Toast";
 
 export default function CustomerDetailPage() {
   const params = useParams<{ organizationId: string; customerId: string }>();
-  const router = useRouter();
+  const org = params.organizationId;
+  const customer = useAsync(() => getCustomer(org, params.customerId), [org, params.customerId]);
+  return (
+    <DetailGuard state={customer} resourceLabel="Cliente" backHref={`/o/${org}/customers`} backLabel="Clientes" moduleName="Clientes">
+      {(c) => <CustomerDetail organizationId={org} customer={c} onChange={customer.setData} />}
+    </DetailGuard>
+  );
+}
+
+function CustomerDetail({ organizationId, customer, onChange }: { organizationId: string; customer: Customer; onChange: (c: Customer) => void }) {
   const { identity } = useSession();
-  const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
+  const roleKey = identity?.memberships.find((m) => m.organizationId === organizationId)?.roleKey;
+  const canEdit = roleCan(roleKey, "customers.update");
+  const canArchive = roleCan(roleKey, "customers.delete");
+  const tz = useOrganizationTimezone(organizationId);
+  const toast = useToast();
+  const orders = useAsync(() => listOrders(organizationId, { customerId: customer.id, limit: 10 }), [organizationId, customer.id], { enabled: roleCan(roleKey, "orders.read") });
 
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [notes, setNotes] = useState("");
-  const [error, setError] = useState<Error | null>(null);
-  const [notFound, setNotFound] = useState(false);
+  const [name, setName] = useState(customer.name);
+  const [email, setEmail] = useState(customer.email ?? "");
+  const [phone, setPhone] = useState(customer.phone ?? "");
+  const [notes, setNotes] = useState(customer.notes ?? "");
   const [saving, setSaving] = useState(false);
-
-  async function load() {
-    setError(null);
-    setNotFound(false);
-    try {
-      const c = await getCustomer(params.organizationId, params.customerId);
-      setCustomer(c);
-      setName(c.name);
-      setEmail(c.email ?? "");
-      setPhone(c.phone ?? "");
-      setNotes(c.notes ?? "");
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setNotFound(true);
-      else setError(err as Error);
-    }
-  }
+  const [error, setError] = useState<unknown>(null);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.customerId]);
+    setName(customer.name);
+    setEmail(customer.email ?? "");
+    setPhone(customer.phone ?? "");
+    setNotes(customer.notes ?? "");
+  }, [customer]);
 
-  const canEdit = roleCan(roleKey, "customers.update");
-  const canDelete = roleCan(roleKey, "customers.delete");
+  const dirty = name !== customer.name || email !== (customer.email ?? "") || phone !== (customer.phone ?? "") || notes !== (customer.notes ?? "");
+  useUnsavedChanges(canEdit && dirty);
 
-  async function handleSave(e: React.FormEvent) {
+  async function save(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateCustomer(params.organizationId, params.customerId, {
-        name,
-        email: email || null,
-        phone: phone || null,
-        notes: notes || null,
-      });
-      setCustomer(updated);
+      onChange(await updateCustomer(organizationId, customer.id, { name, email: email || null, phone: phone || null, notes: notes || null }));
+      toast.success("Cliente guardado.");
     } catch (err) {
-      setError(err as Error);
+      setError(err);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleArchive() {
+  async function reactivate() {
+    setError(null);
     try {
-      await archiveCustomer(params.organizationId, params.customerId);
-      router.push(`/o/${params.organizationId}/customers`);
+      onChange(await updateCustomer(organizationId, customer.id, { status: "ACTIVE" }));
+      toast.success("Cliente reactivado.");
     } catch (err) {
-      setError(err as Error);
+      setError(err);
     }
   }
 
-  if (notFound) {
-    return (
-      <div className="empty-state card">
-        Cliente não encontrado. <Link href={`/o/${params.organizationId}/customers`}>Voltar à lista</Link>
-      </div>
-    );
-  }
-
-  if (!customer && !error) return <div className="empty-state">A carregar…</div>;
+  const status = statusInfo("catalog", customer.status);
+  const when = (iso: string) => (tz.timezone ? localDateTime(iso, tz.timezone) : new Date(iso).toLocaleString("pt-PT"));
 
   return (
     <div>
-      <p>
-        <Link href={`/o/${params.organizationId}/customers`}>← Clientes</Link>
-      </p>
-      <h1 style={{ fontSize: 20 }}>{customer?.name}</h1>
-
-      {error && (
-        <div className="card error-text" style={{ marginBottom: 16 }}>
-          {error.message}
-          {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-        </div>
-      )}
-
-      {customer && (
-        <form onSubmit={handleSave} className="card">
-          <div className="field">
-            <label htmlFor="name">Nome</label>
-            <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} required />
-          </div>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEdit} />
-          </div>
-          <div className="field">
-            <label htmlFor="phone">Telefone</label>
-            <input id="phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEdit} />
-          </div>
-          <div className="field">
-            <label htmlFor="notes">Notas</label>
-            <textarea id="notes" className="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!canEdit} />
-          </div>
-          <div className="field">
-            <label>Estado</label>
-            <span className={`badge${customer.status === "ACTIVE" ? " badge-success" : ""}`}>{customer.status}</span>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            {canEdit && (
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? "A guardar…" : "Guardar alterações"}
-              </button>
-            )}
-            {canDelete && customer.status === "ACTIVE" && (
-              <button type="button" className="btn btn-danger" onClick={handleArchive}>
+      <ResourceHeader
+        name={customer.name}
+        status={<Badge tone={status.tone}>{status.label}</Badge>}
+        subtitle={[customer.email, customer.phone].filter(Boolean).join(" · ") || undefined}
+        breadcrumbs={[{ label: "Clientes", href: `/o/${organizationId}/customers` }, { label: customer.name }]}
+        actions={
+          <>
+            {canArchive && customer.status === "ACTIVE" && (
+              <Button variant="danger" onClick={() => setArchiving(true)}>
                 Arquivar
-              </button>
+              </Button>
             )}
-          </div>
-        </form>
-      )}
+            {canEdit && customer.status === "ARCHIVED" && <Button onClick={reactivate}>Reactivar</Button>}
+          </>
+        }
+      />
+      {error ? <ErrorNotice error={error} /> : null}
+
+      <div className="grid-2" style={{ alignItems: "start" }}>
+        <Section title="Detalhes">
+          <form onSubmit={save} className="card">
+            <Field label="Nome">
+              <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} required />
+            </Field>
+            <Field label="Email">
+              <input id="email" type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEdit} />
+            </Field>
+            <Field label="Telefone">
+              <input id="phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEdit} />
+            </Field>
+            <Field label="Notas">
+              <textarea id="notes" className="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!canEdit} />
+            </Field>
+            {canEdit && (
+              <Button type="submit" variant="primary" loading={saving} disabled={!dirty}>
+                {saving ? "A guardar…" : "Guardar alterações"}
+              </Button>
+            )}
+          </form>
+        </Section>
+
+        <div>
+          {roleCan(roleKey, "orders.read") && (
+            <Section title="Pedidos recentes" actions={<Link href={`/o/${organizationId}/orders`}>Todos os pedidos</Link>}>
+              {orders.error ? (
+                <ErrorNotice error={orders.error} />
+              ) : (
+                <DataTable
+                  rows={orders.data}
+                  loading={orders.loading && !orders.data}
+                  rowKey={(o) => o.id}
+                  empty={{ title: "Este cliente ainda não tem pedidos." }}
+                  columns={[
+                    { key: "created", header: "Criado", cell: (o) => <Link href={`/o/${organizationId}/orders/${o.id}`}>{when(o.createdAt)}</Link> },
+                    { key: "status", header: "Estado", cell: (o) => <Badge tone={statusInfo("order", o.status).tone}>{statusInfo("order", o.status).label}</Badge> },
+                    { key: "total", header: "Total", numeric: true, cell: (o) => formatMoney(o.total, o.currency) },
+                  ]}
+                />
+              )}
+            </Section>
+          )}
+          <Section title="Histórico">
+            <Timeline
+              label="Histórico do cliente"
+              items={[
+                { key: "created", label: "Cliente criado", at: when(customer.createdAt), tone: "gold" },
+                ...(customer.updatedAt !== customer.createdAt ? [{ key: "updated", label: "Última alteração", at: when(customer.updatedAt) }] : []),
+              ]}
+            />
+          </Section>
+        </div>
+      </div>
 
       {/* ---- Marcações (F27): this customer's appointments in a bounded window (≤ 31 days per query) ---- */}
-      {customer && roleCan(roleKey, "appointments.read") && (
-        <div style={{ marginTop: 24 }}>
-          <AppointmentsSection
-            organizationId={params.organizationId}
-            filter={{ customerId: params.customerId }}
-            canCreate={roleCan(roleKey, "appointments.create") && customer.status === "ACTIVE"}
-            defaultRangeDays={31}
-          />
-        </div>
+      {roleCan(roleKey, "appointments.read") && (
+        <AppointmentsSection organizationId={organizationId} filter={{ customerId: customer.id }} canCreate={roleCan(roleKey, "appointments.create") && customer.status === "ACTIVE"} defaultRangeDays={31} />
       )}
+
+      <ConfirmDialog
+        open={archiving}
+        onClose={() => setArchiving(false)}
+        title="Arquivar cliente?"
+        description={`"${customer.name}" deixa de poder receber novas marcações e pedidos. O histórico mantém-se. Pode ser reactivado.`}
+        confirmLabel="Arquivar"
+        onConfirm={async () => {
+          onChange(await archiveCustomer(organizationId, customer.id));
+          toast.success("Cliente arquivado.");
+        }}
+      />
     </div>
   );
 }

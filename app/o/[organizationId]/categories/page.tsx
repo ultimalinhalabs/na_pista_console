@@ -1,126 +1,177 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSession } from "../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../lib/permissions";
-import { archiveCategory, createCategory, listCategories } from "../../../../lib/api/categories";
-import { ApiError } from "../../../../lib/api/errors";
+import { archiveCategory, createCategory, listCategories, updateCategory } from "../../../../lib/api/categories";
 import type { Category } from "../../../../lib/api/types";
+import { useAsync } from "../../../../lib/useAsync";
+import { statusInfo } from "../../../../lib/status";
+import { LIST_LIMIT, ListPage, StatusFilter, useCreateFromUrl, type StatusFilterValue } from "../../../../components/patterns/ListPage";
+import { Badge } from "../../../../components/ui/Data";
+import { Button } from "../../../../components/ui/Button";
+import { Field } from "../../../../components/ui/Form";
+import { ConfirmDialog, Modal } from "../../../../components/ui/Overlay";
+import { ErrorNotice } from "../../../../components/ui/Feedback";
+import { useToast } from "../../../../components/ui/Toast";
 
+/** Categories group products. Archive = the API's DELETE (never a physical delete); reactivate/edit = PATCH. */
 export default function CategoriesPage() {
   const params = useParams<{ organizationId: string }>();
+  const org = params.organizationId;
   const { identity } = useSession();
-  const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
+  const roleKey = identity?.memberships.find((m) => m.organizationId === org)?.roleKey;
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ACTIVE");
+  const [showCreate, setShowCreate] = useCreateFromUrl();
+  const [editing, setEditing] = useState<Category | null>(null);
+  const [archiving, setArchiving] = useState<Category | null>(null);
+  const categories = useAsync(() => listCategories(org, { status: statusFilter || undefined, limit: LIST_LIMIT }), [org, statusFilter]);
+  const toast = useToast();
+  const canCreate = roleCan(roleKey, "categories.create");
+  const canUpdate = roleCan(roleKey, "categories.update");
+  const canArchive = roleCan(roleKey, "categories.delete");
 
-  const [categories, setCategories] = useState<Category[] | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  async function load() {
-    setError(null);
+  async function reactivate(category: Category) {
     try {
-      setCategories(await listCategories(params.organizationId));
+      await updateCategory(org, category.id, { status: "ACTIVE" });
+      toast.success("Categoria reactivada.");
+      categories.reload();
     } catch (err) {
-      setError(err as Error);
+      toast.error("Não foi possível reactivar a categoria.");
+      categories.reload();
+      throw err;
     }
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  return (
+    <ListPage
+      title="Categorias"
+      description="Agrupamento dos produtos do catálogo."
+      moduleName="Categorias"
+      primaryAction={
+        canCreate ? (
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
+            + Nova categoria
+          </Button>
+        ) : undefined
+      }
+      filters={<StatusFilter value={statusFilter} onChange={setStatusFilter} />}
+      state={categories}
+      rowKey={(c) => c.id}
+      empty={{ title: "Nenhuma categoria encontrada." }}
+      columns={[
+        { key: "name", header: "Nome", wrap: true, cell: (c) => <strong>{c.name}</strong> },
+        { key: "description", header: "Descrição", wrap: true, cell: (c) => c.description ?? <span className="subtle">—</span> },
+        { key: "status", header: "Estado", cell: (c) => <Badge tone={statusInfo("catalog", c.status).tone}>{statusInfo("catalog", c.status).label}</Badge> },
+        {
+          key: "actions",
+          header: "Acções",
+          srHeader: true,
+          cell: (c) => (
+            <span className="row">
+              {canUpdate && (
+                <Button size="sm" onClick={() => setEditing(c)}>
+                  Editar
+                </Button>
+              )}
+              {canArchive && c.status === "ACTIVE" && (
+                <Button size="sm" variant="danger" onClick={() => setArchiving(c)}>
+                  Arquivar
+                </Button>
+              )}
+              {canUpdate && c.status === "ARCHIVED" && (
+                <Button size="sm" onClick={() => reactivate(c).catch(() => undefined)}>
+                  Reactivar
+                </Button>
+              )}
+            </span>
+          ),
+        },
+      ]}
+    >
+      {(showCreate || editing) && (
+        <CategoryDialog
+          organizationId={org}
+          category={editing}
+          onClose={() => {
+            setShowCreate(false);
+            setEditing(null);
+          }}
+          onSaved={() => {
+            setShowCreate(false);
+            setEditing(null);
+            categories.reload();
+          }}
+        />
+      )}
+      <ConfirmDialog
+        open={archiving !== null}
+        onClose={() => setArchiving(null)}
+        title="Arquivar categoria?"
+        description={`"${archiving?.name ?? ""}" deixa de aparecer nas listas de categorias activas. Os produtos existentes mantêm-se. Pode ser reactivada mais tarde.`}
+        confirmLabel="Arquivar"
+        onConfirm={async () => {
+          if (!archiving) return;
+          await archiveCategory(org, archiving.id);
+          toast.success("Categoria arquivada.");
+          categories.reload();
+        }}
+      />
+    </ListPage>
+  );
+}
 
-  async function handleCreate(e: React.FormEvent) {
+function CategoryDialog({ organizationId, category, onClose, onSaved }: { organizationId: string; category: Category | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(category?.name ?? "");
+  const [description, setDescription] = useState(category?.description ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const toast = useToast();
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setNameError("O nome é obrigatório");
+      return;
+    }
+    setNameError(null);
     setSubmitting(true);
+    setError(null);
     try {
-      await createCategory(params.organizationId, { name, description: description || undefined });
-      setName("");
-      setDescription("");
-      await load();
+      if (category) {
+        await updateCategory(organizationId, category.id, { name, description: description || null });
+        toast.success("Categoria actualizada.");
+      } else {
+        await createCategory(organizationId, { name, description: description || undefined });
+        toast.success("Categoria criada.");
+      }
+      onSaved();
     } catch (err) {
-      setError(err as Error);
+      setError(err);
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleArchive(id: string) {
-    try {
-      await archiveCategory(params.organizationId, id);
-      await load();
-    } catch (err) {
-      setError(err as Error);
-    }
-  }
-
   return (
-    <div>
-      <h1 style={{ fontSize: 20 }}>Categorias</h1>
-
-      {error && (
-        <div className="card error-text" style={{ marginBottom: 16 }}>
-          {error.message}
-          {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
+    <Modal open onClose={onClose} title={category ? "Editar categoria" : "Nova categoria"}>
+      <form onSubmit={handleSubmit} noValidate>
+        <Field label="Nome" error={nameError}>
+          <input id="category-name" className="input" value={name} onChange={(e) => setName(e.target.value)} data-autofocus required />
+        </Field>
+        <Field label="Descrição">
+          <textarea id="category-description" className="textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        {error ? <ErrorNotice error={error} /> : null}
+        <div className="modal-footer">
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button type="submit" variant="primary" loading={submitting}>
+            {category ? "Guardar" : "Criar"}
+          </Button>
         </div>
-      )}
-
-      {roleCan(roleKey, "categories.create") && (
-        <form onSubmit={handleCreate} className="card" style={{ marginBottom: 16, display: "flex", gap: 8, alignItems: "flex-end" }}>
-          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-            <label htmlFor="cname">Nome</label>
-            <input id="cname" className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div className="field" style={{ flex: 2, marginBottom: 0 }}>
-            <label htmlFor="cdesc">Descrição</label>
-            <input id="cdesc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={submitting}>
-            {submitting ? "A criar…" : "Adicionar"}
-          </button>
-        </form>
-      )}
-
-      {categories === null && !error ? (
-        <div className="empty-state">A carregar…</div>
-      ) : categories && categories.length === 0 ? (
-        <div className="empty-state card">Nenhuma categoria criada ainda.</div>
-      ) : categories ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>Descrição</th>
-              <th>Estado</th>
-              {roleCan(roleKey, "categories.delete") && <th />}
-            </tr>
-          </thead>
-          <tbody>
-            {categories.map((c) => (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td>{c.description ?? "—"}</td>
-                <td>
-                  <span className={`badge${c.status === "ACTIVE" ? " badge-success" : ""}`}>{c.status}</span>
-                </td>
-                {roleCan(roleKey, "categories.delete") && (
-                  <td>
-                    {c.status === "ACTIVE" && (
-                      <button className="btn btn-danger" onClick={() => handleArchive(c.id)}>
-                        Arquivar
-                      </button>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-    </div>
+      </form>
+    </Modal>
   );
 }

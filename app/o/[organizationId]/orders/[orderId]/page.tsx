@@ -2,343 +2,306 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSession } from "../../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../../lib/permissions";
+import { addOrderItem, cancelOrder, completeOrder, confirmOrder, getOrder, removeOrderItem, updateOrderCustomer, updateOrderItemQuantity } from "../../../../../lib/api/orders";
 import { listCustomers } from "../../../../../lib/api/customers";
 import { listProducts } from "../../../../../lib/api/products";
-import {
-  addOrderItem,
-  cancelOrder,
-  completeOrder,
-  confirmOrder,
-  getOrder,
-  removeOrderItem,
-  updateOrderCustomer,
-  updateOrderItemQuantity,
-} from "../../../../../lib/api/orders";
-import { ApiError } from "../../../../../lib/api/errors";
-import type { Customer, Order, OrderStatus, Product } from "../../../../../lib/api/types";
-import { unitLabel } from "../../../../../lib/format";
+import type { Order } from "../../../../../lib/api/types";
+import { useAsync } from "../../../../../lib/useAsync";
+import { useCustomerNames } from "../../../../../lib/useCustomerNames";
+import { statusInfo } from "../../../../../lib/status";
+import { displayQuantity, formatMoney, formatQuantity, unitLabel } from "../../../../../lib/format";
+import { localDateTime } from "../../../../../lib/datetime";
+import { useOrganizationTimezone } from "../../../../../lib/appointments/components";
+import { DetailGuard } from "../../../../../components/patterns/DetailGuard";
+import { ResourceHeader, Section } from "../../../../../components/patterns/Page";
+import { Badge, DataTable, DetailList, Timeline } from "../../../../../components/ui/Data";
+import { ErrorNotice } from "../../../../../components/ui/Feedback";
+import { Button } from "../../../../../components/ui/Button";
+import { Field } from "../../../../../components/ui/Form";
+import { ConfirmDialog } from "../../../../../components/ui/Overlay";
+import { useToast } from "../../../../../components/ui/Toast";
 
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  DRAFT: "Rascunho",
-  CONFIRMED: "Confirmado",
-  COMPLETED: "Concluído",
-  CANCELED: "Cancelado",
-};
-
-function statusBadgeClass(status: OrderStatus): string {
-  switch (status) {
-    case "CONFIRMED":
-      return "badge badge-gold";
-    case "COMPLETED":
-      return "badge badge-success";
-    case "CANCELED":
-      return "badge badge-destructive";
-    default:
-      return "badge";
-  }
-}
+const DECIMAL = /^\d+(\.\d{1,6})?$/;
 
 export default function OrderDetailPage() {
   const params = useParams<{ organizationId: string; orderId: string }>();
+  const org = params.organizationId;
+  const order = useAsync(() => getOrder(org, params.orderId), [org, params.orderId]);
+  return (
+    <DetailGuard state={order} resourceLabel="Pedido" backHref={`/o/${org}/orders`} backLabel="Pedidos" moduleName="Pedidos">
+      {(o) => <OrderDetail organizationId={org} order={o} onChange={order.setData} />}
+    </DetailGuard>
+  );
+}
+
+type Transition = "confirm" | "complete" | "cancel";
+
+/** Order lifecycle (ADR-032): DRAFT → CONFIRMED (consumes stock) → COMPLETED; CANCELED from DRAFT or CONFIRMED (reverses stock). Every transition is confirmed and the screen re-renders from the server's response. */
+function OrderDetail({ organizationId, order, onChange }: { organizationId: string; order: Order; onChange: (o: Order) => void }) {
   const { identity } = useSession();
-  const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
+  const roleKey = identity?.memberships.find((m) => m.organizationId === organizationId)?.roleKey;
   const canWrite = roleCan(roleKey, "orders.update");
-
-  const [order, setOrder] = useState<Order | null>(null);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [error, setError] = useState<Error | null>(null);
-  const [actionError, setActionError] = useState<Error | null>(null);
-  const [notFound, setNotFound] = useState(false);
+  const tz = useOrganizationTimezone(organizationId);
+  const toast = useToast();
+  const isDraft = order.status === "DRAFT";
+  const editable = isDraft && canWrite;
+  const customers = useAsync(() => listCustomers(organizationId, { status: "ACTIVE", limit: 100 }), [organizationId], { enabled: editable });
+  const names = useCustomerNames(organizationId, order.customerId ? [order.customerId] : null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [transition, setTransition] = useState<Transition | null>(null);
 
-  async function load() {
-    setError(null);
-    setNotFound(false);
-    try {
-      const [o, customerList, productList] = await Promise.all([
-        getOrder(params.organizationId, params.orderId),
-        listCustomers(params.organizationId, { status: "ACTIVE" }),
-        listProducts(params.organizationId, { status: "ACTIVE" }),
-      ]);
-      setOrder(o);
-      setCustomers(customerList);
-      setProducts(productList);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setNotFound(true);
-      else setError(err as Error);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.orderId]);
-
-  async function withBusy(action: () => Promise<Order>) {
+  async function run(action: () => Promise<Order>, success?: string) {
     setBusy(true);
-    setActionError(null);
+    setError(null);
     try {
-      setOrder(await action());
+      onChange(await action());
+      if (success) toast.success(success);
     } catch (err) {
-      setActionError(err as Error);
+      setError(err);
     } finally {
       setBusy(false);
     }
   }
 
-  if (notFound) {
-    return (
-      <div className="empty-state card">
-        Pedido não encontrado. <Link href={`/o/${params.organizationId}/orders`}>Voltar aos pedidos</Link>
-      </div>
-    );
-  }
-
-  if (!order && !error) return <div className="empty-state">A carregar…</div>;
-
-  const isDraft = order?.status === "DRAFT";
-  const isConfirmed = order?.status === "CONFIRMED";
-  const priceableProducts = products.filter((p) => p.price !== null);
-  const customerName = customers.find((c) => c.id === order?.customerId)?.name;
+  const status = statusInfo("order", order.status);
+  const when = (iso: string) => (tz.timezone ? localDateTime(iso, tz.timezone) : new Date(iso).toLocaleString("pt-PT"));
+  const dialogs: Record<Transition, { title: string; description: string; label: string; destructive: boolean; action: () => Promise<Order>; success: string }> = {
+    confirm: {
+      title: "Confirmar pedido?",
+      description: "O stock de cada artigo é descontado agora. Se algum produto não tiver stock suficiente ou estiver arquivado, nada é alterado.",
+      label: "Confirmar pedido",
+      destructive: false,
+      action: () => confirmOrder(organizationId, order.id),
+      success: "Pedido confirmado.",
+    },
+    complete: {
+      title: "Concluir pedido?",
+      description: "Marca o pedido como entregue/concluído. Não altera o stock.",
+      label: "Concluir",
+      destructive: false,
+      action: () => completeOrder(organizationId, order.id),
+      success: "Pedido concluído.",
+    },
+    cancel: {
+      title: "Cancelar pedido?",
+      description: order.status === "CONFIRMED" ? "O stock consumido na confirmação é reposto. O cancelamento não pode ser desfeito." : "O rascunho é cancelado. Não pode ser desfeito.",
+      label: order.status === "CONFIRMED" ? "Cancelar e repor stock" : "Cancelar pedido",
+      destructive: true,
+      action: () => cancelOrder(organizationId, order.id),
+      success: "Pedido cancelado.",
+    },
+  };
 
   return (
     <div>
-      <p>
-        <Link href={`/o/${params.organizationId}/orders`}>← Pedidos</Link>
-      </p>
-      <div className="toolbar">
-        <h1 style={{ fontSize: 20, margin: 0, flex: 1 }}>Pedido {order?.id.slice(0, 8)}…</h1>
-        {order && <span className={statusBadgeClass(order.status)}>{STATUS_LABEL[order.status]}</span>}
-      </div>
+      <ResourceHeader
+        name={
+          <>
+            Pedido <code className="mono">{order.id.slice(0, 8)}…</code>
+          </>
+        }
+        status={<Badge tone={status.tone}>{status.label}</Badge>}
+        subtitle={`Total ${formatMoney(order.total, order.currency)}`}
+        breadcrumbs={[{ label: "Pedidos", href: `/o/${organizationId}/orders` }, { label: order.id.slice(0, 8) }]}
+        actions={
+          canWrite ? (
+            <>
+              {isDraft && (
+                <Button variant="primary" disabled={busy || order.items.length === 0} onClick={() => setTransition("confirm")}>
+                  Confirmar pedido
+                </Button>
+              )}
+              {order.status === "CONFIRMED" && (
+                <Button variant="primary" disabled={busy} onClick={() => setTransition("complete")}>
+                  Concluir
+                </Button>
+              )}
+              {(isDraft || order.status === "CONFIRMED") && (
+                <Button variant="danger" disabled={busy} onClick={() => setTransition("cancel")}>
+                  {order.status === "CONFIRMED" ? "Cancelar (repõe stock)" : "Cancelar"}
+                </Button>
+              )}
+            </>
+          ) : undefined
+        }
+      />
+      {error ? <ErrorNotice error={error} /> : null}
 
-      {error && (
-        <div className="card error-text" style={{ marginBottom: 16 }}>
-          {error.message}
-          {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-        </div>
-      )}
-      {actionError && (
-        <div className="card error-text" style={{ marginBottom: 16 }}>
-          {actionError.message}
-          {actionError instanceof ApiError && actionError.requestId && <div className="request-ref">Referência: {actionError.requestId}</div>}
-        </div>
-      )}
-
-      {order && (
-        <>
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div className="field">
-              <label>Cliente</label>
-              {isDraft && canWrite ? (
-                <select
-                  className="select"
-                  value={order.customerId ?? ""}
-                  onChange={(e) =>
-                    withBusy(() => updateOrderCustomer(params.organizationId, order.id, e.target.value || null))
-                  }
-                  disabled={busy}
-                >
+      <div className="grid-2" style={{ alignItems: "start" }}>
+        <Section title="Resumo">
+          <div className="card">
+            {editable ? (
+              <Field label="Cliente">
+                <select id="order-customer" className="select" value={order.customerId ?? ""} disabled={busy} onChange={(e) => run(() => updateOrderCustomer(organizationId, order.id, e.target.value || null), "Cliente actualizado.")}>
                   <option value="">Sem cliente (venda anónima/balcão)</option>
-                  {customers.map((c) => (
+                  {order.customerId && !(customers.data ?? []).some((c) => c.id === order.customerId) && <option value={order.customerId}>{names[order.customerId] ?? "…"}</option>}
+                  {(customers.data ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
-              ) : (
-                <p style={{ margin: "4px 0" }}>{customerName ?? "Sem cliente (venda anónima/balcão)"}</p>
-              )}
-            </div>
-            <div className="field">
-              <label>Total</label>
-              <p style={{ fontSize: 24, margin: "4px 0", color: "var(--color-foreground)" }}>
-                {order.total} {order.currency}
-              </p>
-            </div>
-          </div>
-
-          {isDraft && canWrite && (
-            <AddItemForm
-              organizationId={params.organizationId}
-              orderId={order.id}
-              products={priceableProducts}
-              onAdded={(o) => setOrder(o)}
+              </Field>
+            ) : null}
+            <DetailList
+              items={[
+                ...(editable
+                  ? []
+                  : [{ label: "Cliente", value: order.customerId ? <Link href={`/o/${organizationId}/customers/${order.customerId}`}>{names[order.customerId] ?? "…"}</Link> : "Sem cliente (venda anónima/balcão)" }]),
+                { label: "Total", value: <strong>{formatMoney(order.total, order.currency)}</strong> },
+                { label: "Artigos", value: String(order.items.length) },
+              ]}
             />
-          )}
+          </div>
+        </Section>
+        <Section title="Histórico">
+          <Timeline
+            label="Histórico do pedido"
+            items={[
+              { key: "created", label: "Pedido criado", at: when(order.createdAt), tone: "gold" },
+              ...(order.status !== "DRAFT" || order.updatedAt !== order.createdAt ? [{ key: "state", label: `Estado actual: ${status.label}`, at: `desde ${when(order.updatedAt)}`, tone: order.status === "CANCELED" ? ("danger" as const) : order.status === "COMPLETED" ? ("success" as const) : ("neutral" as const) }] : []),
+            ]}
+          />
+        </Section>
+      </div>
 
-          <h2 style={{ fontSize: 16, marginTop: 24 }}>Itens</h2>
-          {order.items.length === 0 ? (
-            <div className="empty-state card">Nenhum item ainda.</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th>Quantidade</th>
-                  <th>Preço unitário</th>
-                  <th>Subtotal</th>
-                  {isDraft && canWrite && <th></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {order.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.productName}</td>
-                    <td>
-                      {isDraft && canWrite ? (
-                        <input
-                          className="input"
-                          type="number"
-                          min="0"
-                          step="any"
-                          defaultValue={item.quantity}
-                          style={{ maxWidth: 120 }}
-                          disabled={busy}
-                          onBlur={(e) => {
-                            const next = e.target.value;
-                            if (next && next !== item.quantity) {
-                              withBusy(() => updateOrderItemQuantity(params.organizationId, order.id, item.id, next));
-                            }
-                          }}
-                        />
-                      ) : (
-                        item.quantity
-                      )}
-                    </td>
-                    <td>
-                      {item.unitPrice} {order.currency}
-                    </td>
-                    <td>
-                      {item.subtotal} {order.currency}
-                    </td>
-                    {isDraft && canWrite && (
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-danger"
-                          disabled={busy}
-                          onClick={() => withBusy(() => removeOrderItem(params.organizationId, order.id, item.id))}
-                        >
-                          Remover
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      {editable && (
+        <Section title="Adicionar produto">
+          <AddItemForm organizationId={organizationId} orderId={order.id} onAdded={(o) => onChange(o)} />
+        </Section>
+      )}
 
-          {canWrite && (
-            <div className="toolbar" style={{ marginTop: 24 }}>
-              {isDraft && (
-                <>
-                  <button type="button" className="btn btn-primary" disabled={busy} onClick={() => withBusy(() => confirmOrder(params.organizationId, order.id))}>
-                    Confirmar pedido
-                  </button>
-                  <button type="button" className="btn btn-danger" disabled={busy} onClick={() => withBusy(() => cancelOrder(params.organizationId, order.id))}>
-                    Cancelar
-                  </button>
-                </>
-              )}
-              {isConfirmed && (
-                <>
-                  <button type="button" className="btn btn-primary" disabled={busy} onClick={() => withBusy(() => completeOrder(params.organizationId, order.id))}>
-                    Concluir
-                  </button>
-                  <button type="button" className="btn btn-danger" disabled={busy} onClick={() => withBusy(() => cancelOrder(params.organizationId, order.id))}>
-                    Cancelar (repõe stock)
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </>
+      <Section title="Artigos" description="Nome e preço de cada artigo ficam fixados quando o artigo é adicionado — alterações posteriores ao produto não mudam este pedido.">
+        <DataTable
+          rows={order.items}
+          rowKey={(i) => i.id}
+          empty={{ title: "Nenhum artigo ainda.", description: editable ? "Adiciona produtos acima antes de confirmar." : undefined }}
+          columns={[
+            { key: "product", header: "Produto", wrap: true, cell: (i) => i.productName },
+            {
+              key: "qty",
+              header: "Quantidade",
+              numeric: true,
+              cell: (i) =>
+                editable ? (
+                  <input
+                    className="input"
+                    aria-label={`Quantidade de ${i.productName}`}
+                    inputMode="decimal"
+                    defaultValue={formatQuantity(i.quantity)}
+                    style={{ maxWidth: 110, textAlign: "right" }}
+                    disabled={busy}
+                    onBlur={(e) => {
+                      const next = e.target.value.trim().replace(",", ".");
+                      if (!next || next === formatQuantity(i.quantity)) return;
+                      if (!DECIMAL.test(next) || Number(next) <= 0) {
+                        setError(new Error("Quantidade inválida — usa um número positivo (até 6 casas decimais)."));
+                        e.target.value = formatQuantity(i.quantity);
+                        return;
+                      }
+                      run(() => updateOrderItemQuantity(organizationId, order.id, i.id, next), "Quantidade actualizada.");
+                    }}
+                  />
+                ) : (
+                  displayQuantity(i.quantity)
+                ),
+            },
+            { key: "price", header: "Preço unitário", numeric: true, cell: (i) => formatMoney(i.unitPrice, order.currency) },
+            { key: "subtotal", header: "Subtotal", numeric: true, cell: (i) => formatMoney(i.subtotal, order.currency) },
+            ...(editable
+              ? [
+                  {
+                    key: "remove",
+                    header: "Remover",
+                    srHeader: true,
+                    cell: (i: Order["items"][number]) => (
+                      <Button size="sm" variant="danger" disabled={busy} onClick={() => run(() => removeOrderItem(organizationId, order.id, i.id), "Artigo removido.")}>
+                        Remover
+                      </Button>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      </Section>
+
+      {transition && (
+        <ConfirmDialog
+          open
+          onClose={() => setTransition(null)}
+          title={dialogs[transition].title}
+          description={dialogs[transition].description}
+          confirmLabel={dialogs[transition].label}
+          destructive={dialogs[transition].destructive}
+          onConfirm={async () => {
+            onChange(await dialogs[transition].action());
+            toast.success(dialogs[transition].success);
+          }}
+        />
       )}
     </div>
   );
 }
 
-function AddItemForm({
-  organizationId,
-  orderId,
-  products,
-  onAdded,
-}: {
-  organizationId: string;
-  orderId: string;
-  products: Product[];
-  onAdded: (order: Order) => void;
-}) {
+function AddItemForm({ organizationId, orderId, onAdded }: { organizationId: string; orderId: string; onAdded: (order: Order) => void }) {
+  const products = useAsync(async () => (await listProducts(organizationId, { status: "ACTIVE", limit: 100 })).filter((p) => p.price !== null), [organizationId]);
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  const selected = products.find((p) => p.id === productId);
+  const [error, setError] = useState<unknown>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!productId) {
-      setError(new Error("Escolhe um produto"));
-      return;
-    }
+    const value = quantity.trim().replace(",", ".");
+    if (!productId) return setFieldError("Escolhe um produto");
+    if (!DECIMAL.test(value) || Number(value) <= 0) return setFieldError("Indica uma quantidade positiva (até 6 casas decimais)");
+    setFieldError(null);
     setSubmitting(true);
     setError(null);
     try {
-      const order = await addOrderItem(organizationId, orderId, { productId, quantity: Number(quantity) });
-      onAdded(order);
+      onAdded(await addOrderItem(organizationId, orderId, { productId, quantity: value }));
       setProductId("");
       setQuantity("1");
+      toast.success("Artigo adicionado.");
     } catch (err) {
-      setError(err as Error);
+      setError(err);
     } finally {
       setSubmitting(false);
     }
   }
 
+  if (products.data && products.data.length === 0) {
+    return <div className="empty">Nenhum produto activo com preço definido. Define um preço em Produtos para o poder vender.</div>;
+  }
   return (
-    <form onSubmit={handleSubmit} className="card" style={{ marginBottom: 16 }}>
-      <h2 style={{ fontSize: 16, marginTop: 0 }}>Adicionar produto</h2>
-      {products.length === 0 ? (
-        <div className="empty-state">Nenhum produto activo com preço definido.</div>
-      ) : (
-        <>
-          <div className="field">
-            <label htmlFor="add-item-product">Produto</label>
-            <select id="add-item-product" className="select" value={productId} onChange={(e) => setProductId(e.target.value)}>
-              <option value="">Escolhe um produto…</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {p.price} AOA / {unitLabel(p.unit)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="add-item-quantity">Quantidade</label>
-            <input id="add-item-quantity" className="input" type="number" min="0" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
-          </div>
-          {selected && (
-            <p style={{ fontSize: 14, color: "var(--color-foreground-muted)" }}>
-              Subtotal estimado: {(Number(selected.price) * Number(quantity || 0)).toFixed(2)} AOA (o valor final é sempre calculado pelo servidor)
-            </p>
-          )}
-        </>
-      )}
-      {error && (
-        <div className="error-text" style={{ marginBottom: 12 }}>
-          {error.message}
-          {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-        </div>
-      )}
-      <button type="submit" className="btn btn-primary" disabled={submitting || products.length === 0}>
+    <form onSubmit={handleSubmit} className="card" noValidate>
+      <div className="grid-2">
+        <Field label="Produto" error={fieldError}>
+          <select id="add-item-product" className="select" value={productId} onChange={(e) => setProductId(e.target.value)}>
+            <option value="">Escolhe um produto…</option>
+            {(products.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — {formatMoney(p.price!)} / {unitLabel(p.unit)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Quantidade" hint="O subtotal é sempre calculado pelo servidor.">
+          <input id="add-item-quantity" className="input" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
+        </Field>
+      </div>
+      {products.error ? <ErrorNotice error={products.error} /> : null}
+      {error ? <ErrorNotice error={error} /> : null}
+      <Button type="submit" variant="primary" loading={submitting}>
         {submitting ? "A adicionar…" : "Adicionar ao pedido"}
-      </button>
+      </Button>
     </form>
   );
 }

@@ -16,6 +16,14 @@ import {
 import { createException, getAvailability, getSchedule, listExceptions, removeException, replaceSchedule } from "../../../../../lib/api/scheduling";
 import { ApiError } from "../../../../../lib/api/errors";
 import { AppointmentsSection } from "../../../../../lib/appointments/components";
+import { statusInfo } from "../../../../../lib/status";
+import { formatMoney } from "../../../../../lib/format";
+import { ResourceHeader } from "../../../../../components/patterns/Page";
+import { Badge } from "../../../../../components/ui/Data";
+import { ErrorNotice } from "../../../../../components/ui/Feedback";
+import { Button } from "../../../../../components/ui/Button";
+import { ConfirmDialog } from "../../../../../components/ui/Overlay";
+import { useToast } from "../../../../../components/ui/Toast";
 import type { AssociatedService, Availability, Professional, Service, ScheduleException, ScheduleRule } from "../../../../../lib/api/types";
 
 const DAY_LABELS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -46,6 +54,8 @@ export default function ProfessionalDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const toast = useToast();
   const [associating, setAssociating] = useState(false);
 
   // ---- schedule (weekly rules) — ADR-039 ----
@@ -130,14 +140,15 @@ export default function ProfessionalDetailPage() {
     }
   }
 
-  async function handleToggleStatus() {
-    if (!professional) return;
+  async function setStatus(status: "ACTIVE" | "ARCHIVED") {
     setError(null);
     try {
-      const updated = await updateProfessional(params.organizationId, params.professionalId, { status: professional.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE" });
+      const updated = await updateProfessional(params.organizationId, params.professionalId, { status });
       setProfessional(updated);
+      toast.success(status === "ARCHIVED" ? "Profissional arquivado." : "Profissional reactivado.");
     } catch (err) {
       setError(err as Error);
+      throw err;
     }
   }
 
@@ -275,20 +286,41 @@ export default function ProfessionalDetailPage() {
 
   return (
     <div>
-      <p>
-        <Link href={`/o/${params.organizationId}/professionals`}>← Profissionais</Link>
-      </p>
-      <h1 style={{ fontSize: 20 }}>{professional?.name}</h1>
+      <ResourceHeader
+        name={professional?.name ?? "Profissional"}
+        status={professional ? <Badge tone={statusInfo("catalog", professional.status).tone}>{statusInfo("catalog", professional.status).label}</Badge> : undefined}
+        breadcrumbs={[{ label: "Profissionais", href: `/o/${params.organizationId}/professionals` }, { label: professional?.name ?? "…" }]}
+        actions={
+          professional && canEdit ? (
+            professional.status === "ACTIVE" ? (
+              <Button variant="danger" onClick={() => setConfirmArchive(true)}>
+                Arquivar
+              </Button>
+            ) : (
+              <Button onClick={() => setStatus("ACTIVE").catch(() => undefined)}>Reactivar</Button>
+            )
+          ) : undefined
+        }
+      />
+      <nav aria-label="Secções desta página" className="row" style={{ marginBottom: "var(--np-space-5)" }}>
+        {[
+          ["perfil", "Perfil"],
+          ["servicos", "Serviços"],
+          ["horario", "Horário"],
+          ["excepcoes", "Excepções"],
+          ["disponibilidade", "Disponibilidade"],
+          ["marcacoes", "Marcações"],
+        ].map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="badge">
+            {label}
+          </a>
+        ))}
+      </nav>
 
-      {error && (
-        <div className="card error-text" style={{ marginBottom: 16 }}>
-          {error.message}
-          {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-        </div>
-      )}
+      {error && <ErrorNotice error={error} />}
 
       {professional && (
-        <form onSubmit={handleSave} className="card" style={{ marginBottom: 24 }}>
+        <form onSubmit={handleSave} className="card" style={{ marginBottom: 24 }} id="perfil">
           <div className="field">
             <label htmlFor="name">Nome</label>
             <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} required />
@@ -305,27 +337,15 @@ export default function ProfessionalDetailPage() {
             <label htmlFor="email">Email</label>
             <input id="email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEdit} />
           </div>
-          <div className="field">
-            <label>Estado</label>
-            <span className={`badge${professional.status === "ACTIVE" ? " badge-success" : ""}`}>{professional.status}</span>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            {canEdit && (
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? "A guardar…" : "Guardar alterações"}
-              </button>
-            )}
-            {canEdit && (
-              <button type="button" className="btn btn-danger" onClick={handleToggleStatus}>
-                {professional.status === "ACTIVE" ? "Arquivar" : "Reactivar"}
-              </button>
-            )}
-          </div>
+          {canEdit && (
+            <Button type="submit" variant="primary" loading={saving}>
+              {saving ? "A guardar…" : "Guardar alterações"}
+            </Button>
+          )}
         </form>
       )}
 
-      <h2 style={{ fontSize: 16 }}>Serviços associados</h2>
+      <h2 id="servicos" className="section-heading">Serviços associados</h2>
 
       {canEdit && (
         <form onSubmit={handleAssociate} className="card" style={{ marginBottom: 16 }}>
@@ -339,7 +359,7 @@ export default function ProfessionalDetailPage() {
                   <option value="">Escolhe um serviço…</option>
                   {availableToAssociate.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} — {s.durationMinutes} min{s.price !== null ? ` — ${s.price} AOA` : ""}
+                      {s.name} — {s.durationMinutes} min{s.price !== null ? ` — ${formatMoney(s.price)}` : ""}
                     </option>
                   ))}
                 </select>
@@ -349,12 +369,7 @@ export default function ProfessionalDetailPage() {
               </div>
             </div>
           )}
-          {associationError && (
-            <div className="error-text" style={{ marginTop: 12 }}>
-              {associationError.message}
-              {associationError instanceof ApiError && associationError.requestId && <div className="request-ref">Referência: {associationError.requestId}</div>}
-            </div>
-          )}
+          {associationError && <ErrorNotice error={associationError} />}
         </form>
       )}
 
@@ -380,9 +395,9 @@ export default function ProfessionalDetailPage() {
                   <Link href={`/o/${params.organizationId}/services/${s.id}`}>{s.name}</Link>
                 </td>
                 <td>{s.durationMinutes} min</td>
-                <td>{s.price !== null ? `${s.price} AOA` : "—"}</td>
+                <td>{s.price !== null ? formatMoney(s.price) : "—"}</td>
                 <td>
-                  <span className={`badge${s.status === "ACTIVE" ? " badge-success" : " badge-warning"}`}>{s.status}</span>
+                  <Badge tone={s.status === "ACTIVE" ? "success" : "warning"}>{statusInfo("catalog", s.status).label}</Badge>
                 </td>
                 {canEdit && (
                   <td>
@@ -398,7 +413,7 @@ export default function ProfessionalDetailPage() {
       )}
 
       {/* ---- Horário (weekly schedule) — ADR-039, F26 ---- */}
-      <h2 style={{ fontSize: 16 }}>Horário semanal</h2>
+      <h2 id="horario" className="section-heading">Horário semanal</h2>
       <form onSubmit={handleSaveSchedule} className="card" style={{ marginBottom: 24 }}>
         {DAY_LABELS.map((label, dayOfWeek) => {
           const intervals = weeklyDraft[dayOfWeek] ?? [];
@@ -443,12 +458,7 @@ export default function ProfessionalDetailPage() {
           );
         })}
 
-        {scheduleError && (
-          <div className="error-text" style={{ marginTop: 12 }}>
-            {scheduleError.message}
-            {scheduleError instanceof ApiError && scheduleError.requestId && <div className="request-ref">Referência: {scheduleError.requestId}</div>}
-          </div>
-        )}
+        {scheduleError && <ErrorNotice error={scheduleError} />}
 
         {canEditSchedule && (
           <button type="submit" className="btn btn-primary" disabled={scheduleSaving} style={{ marginTop: 12 }}>
@@ -459,7 +469,7 @@ export default function ProfessionalDetailPage() {
       </form>
 
       {/* ---- Excepções (date-specific overrides) — ADR-039 D4 ---- */}
-      <h2 style={{ fontSize: 16 }}>Excepções</h2>
+      <h2 id="excepcoes" className="section-heading">Excepções</h2>
       {canEditSchedule && (
         <form onSubmit={handleCreateException} className="card" style={{ marginBottom: 16 }}>
           <div className="field">
@@ -485,12 +495,7 @@ export default function ProfessionalDetailPage() {
           <button type="submit" className="btn btn-primary" disabled={creatingException}>
             {creatingException ? "A adicionar…" : "Adicionar excepção"}
           </button>
-          {exceptionError && (
-            <div className="error-text" style={{ marginTop: 12 }}>
-              {exceptionError.message}
-              {exceptionError instanceof ApiError && exceptionError.requestId && <div className="request-ref">Referência: {exceptionError.requestId}</div>}
-            </div>
-          )}
+          {exceptionError && <ErrorNotice error={exceptionError} />}
         </form>
       )}
 
@@ -526,7 +531,7 @@ export default function ProfessionalDetailPage() {
       )}
 
       {/* ---- Disponibilidade (computed, read-only) — distinct from the schedule configuration above (ADR-040 D14) ---- */}
-      <h2 style={{ fontSize: 16 }}>Disponibilidade</h2>
+      <h2 id="disponibilidade" className="section-heading">Disponibilidade</h2>
       <p style={{ fontSize: 13, color: "var(--np-foreground-muted)" }}>
         Horário de trabalho calculado a partir da configuração acima — não desconta marcações existentes e não é uma garantia de reserva. Para marcar, usa “Nova marcação”: os horários propostos aí já descontam as marcações.
       </p>
@@ -591,9 +596,18 @@ export default function ProfessionalDetailPage() {
       )}
 
       {/* ---- Marcações (F27) — read-only list + entry into the shared create flow; no booking logic here ---- */}
+      <div id="marcacoes" />
       {canReadAppointments && professional && (
         <AppointmentsSection organizationId={params.organizationId} filter={{ professionalId: params.professionalId }} canCreate={canCreateAppointments && professional.status === "ACTIVE"} defaultRangeDays={7} />
       )}
+      <ConfirmDialog
+        open={confirmArchive}
+        onClose={() => setConfirmArchive(false)}
+        title="Arquivar profissional?"
+        description={`"${professional?.name ?? ""}" deixa de aceitar novas marcações e associações. O horário e as marcações existentes mantêm-se. Pode ser reactivado.`}
+        confirmLabel="Arquivar"
+        onConfirm={() => setStatus("ARCHIVED")}
+      />
     </div>
   );
 }

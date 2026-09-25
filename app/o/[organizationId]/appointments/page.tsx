@@ -10,6 +10,7 @@ import { listProfessionals } from "../../../../lib/api/professionals";
 import type { Appointment, Professional } from "../../../../lib/api/types";
 import { addDaysTo, todayIn } from "../../../../lib/datetime";
 import { AppointmentsTable, ErrorNotice, TimezoneMissing, useAppointmentNames, useOrganizationTimezone } from "../../../../lib/appointments/components";
+import { PageHeader } from "../../../../components/patterns/Page";
 
 /**
  * F27 day view (F27A §42): one organization-local date, optional
@@ -53,14 +54,17 @@ export default function AppointmentsDayPage() {
 
   return (
     <div>
-      <div className="toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontSize: 20 }}>Marcações</h1>
-        {canCreate && tz.timezone && (
-          <Link className="btn btn-primary" href={newHref}>
-            Nova marcação
-          </Link>
-        )}
-      </div>
+      <PageHeader
+        title="Marcações"
+        description="Agenda do dia por profissional. Os horários mostrados estão no fuso horário da organização."
+        actions={
+          canCreate && tz.timezone ? (
+            <Link className="btn btn-primary" href={newHref}>
+              Nova marcação
+            </Link>
+          ) : undefined
+        }
+      />
 
       {tz.loading ? (
         <div className="empty-state">A carregar…</div>

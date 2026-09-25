@@ -53,3 +53,8 @@ export function roleCan(roleKey: string | undefined, permission: string): boolea
   if (!roleKey) return false;
   return (ROLE_PERMISSIONS[roleKey] ?? []).includes(permission);
 }
+
+/** F29: read-only access to the mirror for the Permissions page (same data `roleCan` uses — never a second copy). */
+export function rolePermissions(roleKey: string): readonly string[] {
+  return ROLE_PERMISSIONS[roleKey] ?? [];
+}

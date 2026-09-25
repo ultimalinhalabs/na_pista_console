@@ -6,142 +6,175 @@ import { useEffect, useState } from "react";
 import { useSession } from "../../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../../lib/permissions";
 import { getService, updateService } from "../../../../../lib/api/services";
-import { ApiError } from "../../../../../lib/api/errors";
+import { listProfessionals } from "../../../../../lib/api/professionals";
 import type { Service } from "../../../../../lib/api/types";
+import { useAsync } from "../../../../../lib/useAsync";
+import { useUnsavedChanges } from "../../../../../lib/useUnsavedChanges";
+import { statusInfo } from "../../../../../lib/status";
+import { formatMoney } from "../../../../../lib/format";
+import { localDateTime } from "../../../../../lib/datetime";
+import { useOrganizationTimezone } from "../../../../../lib/appointments/components";
+import { DetailGuard } from "../../../../../components/patterns/DetailGuard";
+import { ResourceHeader, Section } from "../../../../../components/patterns/Page";
+import { Badge, DataTable, Timeline } from "../../../../../components/ui/Data";
+import { ErrorNotice } from "../../../../../components/ui/Feedback";
+import { Button } from "../../../../../components/ui/Button";
+import { Field } from "../../../../../components/ui/Form";
+import { ConfirmDialog } from "../../../../../components/ui/Overlay";
+import { useToast } from "../../../../../components/ui/Toast";
 
 export default function ServiceDetailPage() {
   const params = useParams<{ organizationId: string; serviceId: string }>();
+  const org = params.organizationId;
+  const service = useAsync(() => getService(org, params.serviceId), [org, params.serviceId]);
+  return (
+    <DetailGuard state={service} resourceLabel="Serviço" backHref={`/o/${org}/services`} backLabel="Serviços" moduleName="Serviços">
+      {(s) => <ServiceDetail organizationId={org} service={s} onChange={service.setData} />}
+    </DetailGuard>
+  );
+}
+
+function ServiceDetail({ organizationId, service, onChange }: { organizationId: string; service: Service; onChange: (s: Service) => void }) {
   const { identity } = useSession();
-  const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
+  const roleKey = identity?.memberships.find((m) => m.organizationId === organizationId)?.roleKey;
+  const canEdit = roleCan(roleKey, "services.update");
+  const tz = useOrganizationTimezone(organizationId);
+  const toast = useToast();
+  // ADR-037: who performs this service — the API's own serviceId filter on professionals.
+  const professionals = useAsync(() => listProfessionals(organizationId, { serviceId: service.id, limit: 100 }), [organizationId, service.id], { enabled: roleCan(roleKey, "professionals.read") });
 
-  const [service, setService] = useState<Service | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("");
-  const [price, setPrice] = useState("");
-  const [error, setError] = useState<Error | null>(null);
-  const [notFound, setNotFound] = useState(false);
+  const [name, setName] = useState(service.name);
+  const [description, setDescription] = useState(service.description ?? "");
+  const [durationMinutes, setDurationMinutes] = useState(String(service.durationMinutes));
+  const [price, setPrice] = useState(service.price ?? "");
   const [saving, setSaving] = useState(false);
-
-  async function load() {
-    setError(null);
-    setNotFound(false);
-    try {
-      const s = await getService(params.organizationId, params.serviceId);
-      setService(s);
-      setName(s.name);
-      setDescription(s.description ?? "");
-      setDurationMinutes(String(s.durationMinutes));
-      setPrice(s.price ?? "");
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setNotFound(true);
-      else setError(err as Error);
-    }
-  }
+  const [error, setError] = useState<unknown>(null);
+  const [durationError, setDurationError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.serviceId]);
+    setName(service.name);
+    setDescription(service.description ?? "");
+    setDurationMinutes(String(service.durationMinutes));
+    setPrice(service.price ?? "");
+  }, [service]);
 
-  const canEdit = roleCan(roleKey, "services.update");
+  const dirty = name !== service.name || description !== (service.description ?? "") || durationMinutes !== String(service.durationMinutes) || price !== (service.price ?? "");
+  useUnsavedChanges(canEdit && dirty);
 
-  async function handleSave(e: React.FormEvent) {
+  async function save(e: React.FormEvent) {
     e.preventDefault();
     const duration = Number(durationMinutes);
     if (!Number.isInteger(duration) || duration <= 0) {
-      setError(new Error("A duração tem de ser um número inteiro de minutos maior que zero"));
+      setDurationError("A duração tem de ser um número inteiro de minutos maior que zero");
       return;
     }
+    setDurationError(null);
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateService(params.organizationId, params.serviceId, {
-        name,
-        description: description || null,
-        durationMinutes: duration,
-        price: price ? Number(price) : null,
-      });
-      setService(updated);
+      onChange(await updateService(organizationId, service.id, { name, description: description || null, durationMinutes: duration, price: price.trim() || null }));
+      toast.success("Serviço guardado.");
     } catch (err) {
-      setError(err as Error);
+      setError(err);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleToggleStatus() {
-    if (!service) return;
-    setError(null);
-    try {
-      const updated = await updateService(params.organizationId, params.serviceId, { status: service.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE" });
-      setService(updated);
-    } catch (err) {
-      setError(err as Error);
-    }
+  async function setStatus(status: "ACTIVE" | "ARCHIVED") {
+    onChange(await updateService(organizationId, service.id, { status }));
+    toast.success(status === "ARCHIVED" ? "Serviço arquivado." : "Serviço reactivado.");
   }
 
-  if (notFound) {
-    return (
-      <div className="empty-state card">
-        Serviço não encontrado. <Link href={`/o/${params.organizationId}/services`}>Voltar à lista</Link>
-      </div>
-    );
-  }
-
-  if (!service && !error) return <div className="empty-state">A carregar…</div>;
+  const status = statusInfo("catalog", service.status);
+  const when = (iso: string) => (tz.timezone ? localDateTime(iso, tz.timezone) : new Date(iso).toLocaleString("pt-PT"));
 
   return (
     <div>
-      <p>
-        <Link href={`/o/${params.organizationId}/services`}>← Serviços</Link>
-      </p>
-      <h1 style={{ fontSize: 20 }}>{service?.name}</h1>
+      <ResourceHeader
+        name={service.name}
+        status={<Badge tone={status.tone}>{status.label}</Badge>}
+        subtitle={`${service.durationMinutes} min · ${service.price !== null ? formatMoney(service.price) : "sem preço"}`}
+        breadcrumbs={[{ label: "Serviços", href: `/o/${organizationId}/services` }, { label: service.name }]}
+        actions={
+          canEdit ? (
+            service.status === "ACTIVE" ? (
+              <Button variant="danger" onClick={() => setArchiving(true)}>
+                Arquivar
+              </Button>
+            ) : (
+              <Button onClick={() => setStatus("ACTIVE").catch((err) => setError(err))}>Reactivar</Button>
+            )
+          ) : undefined
+        }
+      />
+      {error ? <ErrorNotice error={error} /> : null}
 
-      {error && (
-        <div className="card error-text" style={{ marginBottom: 16 }}>
-          {error.message}
-          {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-        </div>
-      )}
-
-      {service && (
-        <form onSubmit={handleSave} className="card">
-          <div className="field">
-            <label htmlFor="name">Nome</label>
-            <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} required />
-          </div>
-          <div className="field">
-            <label htmlFor="description">Descrição</label>
-            <textarea id="description" className="textarea" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} disabled={!canEdit} />
-          </div>
-          <div className="field">
-            <label htmlFor="duration">Duração (minutos)</label>
-            <input id="duration" className="input" type="number" min="1" step="1" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} disabled={!canEdit} required />
-          </div>
-          <div className="field">
-            <label htmlFor="price">Preço (AOA)</label>
-            <input id="price" className="input" type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} disabled={!canEdit} placeholder="Sem preço" />
-          </div>
-          <div className="field">
-            <label>Estado</label>
-            <span className={`badge${service.status === "ACTIVE" ? " badge-success" : ""}`}>{service.status}</span>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
+      <div className="grid-2" style={{ alignItems: "start" }}>
+        <Section title="Detalhes">
+          <form onSubmit={save} className="card" noValidate>
+            <Field label="Nome">
+              <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} required />
+            </Field>
+            <Field label="Descrição">
+              <textarea id="description" className="textarea" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} disabled={!canEdit} />
+            </Field>
+            <div className="grid-2">
+              <Field label="Duração (minutos)" error={durationError} hint="Novas marcações usam esta duração; as existentes mantêm a sua.">
+                <input id="duration" className="input" type="number" min="1" step="1" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} disabled={!canEdit} required />
+              </Field>
+              <Field label="Preço (AOA)" hint="Vazio = sem preço">
+                <input id="price" className="input" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(",", "."))} disabled={!canEdit} placeholder="Sem preço" />
+              </Field>
+            </div>
             {canEdit && (
-              <button type="submit" className="btn btn-primary" disabled={saving}>
+              <Button type="submit" variant="primary" loading={saving} disabled={!dirty}>
                 {saving ? "A guardar…" : "Guardar alterações"}
-              </button>
+              </Button>
             )}
-            {canEdit && (
-              <button type="button" className="btn btn-danger" onClick={handleToggleStatus}>
-                {service.status === "ACTIVE" ? "Arquivar" : "Reactivar"}
-              </button>
-            )}
-          </div>
-        </form>
-      )}
+          </form>
+        </Section>
+
+        <div>
+          {roleCan(roleKey, "professionals.read") && (
+            <Section title="Profissionais associados" description="Quem pode prestar este serviço. As associações gerem-se na página de cada profissional.">
+              {professionals.error ? (
+                <ErrorNotice error={professionals.error} />
+              ) : (
+                <DataTable
+                  rows={professionals.data}
+                  loading={professionals.loading && !professionals.data}
+                  rowKey={(p) => p.id}
+                  empty={{ title: "Nenhum profissional presta este serviço ainda." }}
+                  columns={[
+                    { key: "name", header: "Profissional", wrap: true, cell: (p) => <Link href={`/o/${organizationId}/professionals/${p.id}`}>{p.name}</Link> },
+                    { key: "status", header: "Estado", cell: (p) => <Badge tone={statusInfo("catalog", p.status).tone}>{statusInfo("catalog", p.status).label}</Badge> },
+                  ]}
+                />
+              )}
+            </Section>
+          )}
+          <Section title="Histórico">
+            <Timeline
+              label="Histórico do serviço"
+              items={[
+                { key: "created", label: "Criado", at: when(service.createdAt), tone: "gold" },
+                ...(service.updatedAt !== service.createdAt ? [{ key: "updated", label: "Última alteração", at: when(service.updatedAt) }] : []),
+              ]}
+            />
+          </Section>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={archiving}
+        onClose={() => setArchiving(false)}
+        title="Arquivar serviço?"
+        description={`"${service.name}" deixa de aceitar novas marcações e associações. Marcações existentes mantêm-se. Pode ser reactivado.`}
+        confirmLabel="Arquivar"
+        onConfirm={() => setStatus("ARCHIVED")}
+      />
     </div>
   );
 }

@@ -236,6 +236,9 @@ describe("ProfessionalDetailPage — archive/reactivate", () => {
     await waitFor(() => expect(screen.getByText("Arquivar")).toBeInTheDocument());
 
     await user.click(screen.getByText("Arquivar"));
+    // F29: archiving is a destructive action and now goes through a confirmation dialog.
+    const dialog = await screen.findByRole("dialog", { name: "Arquivar profissional?" });
+    await user.click(within(dialog).getByRole("button", { name: "Arquivar" }));
 
     await waitFor(() => expect(updateProfessionalMock).toHaveBeenCalledWith("org-a", "p-1", { status: "ARCHIVED" }));
     await waitFor(() => expect(screen.getByText("Reactivar")).toBeInTheDocument());
@@ -271,7 +274,7 @@ describe("ProfessionalDetailPage — associated services (empty/associate/remove
     render(<ProfessionalDetailPage />);
     await waitFor(() => expect(screen.getByText("Corte de Cabelo")).toBeInTheDocument());
     expect(screen.getByText("30 min")).toBeInTheDocument();
-    expect(screen.getByText("15.00 AOA")).toBeInTheDocument();
+    expect(screen.getByText(/15,00\sKz/)).toBeInTheDocument(); // F29: pt-AO money formatting (lib/format.ts formatMoney)
     expect(screen.getByText("Remover")).toBeInTheDocument();
   });
 

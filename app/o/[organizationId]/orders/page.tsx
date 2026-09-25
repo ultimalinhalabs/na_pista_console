@@ -2,165 +2,86 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSession } from "../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../lib/permissions";
-import { listCustomers } from "../../../../lib/api/customers";
 import { createOrder, listOrders } from "../../../../lib/api/orders";
+import { listCustomers } from "../../../../lib/api/customers";
 import { listProducts } from "../../../../lib/api/products";
-import { ApiError } from "../../../../lib/api/errors";
-import type { Customer, OrderStatus, OrderSummary, Product } from "../../../../lib/api/types";
+import type { OrderStatus } from "../../../../lib/api/types";
+import { useAsync } from "../../../../lib/useAsync";
+import { useCustomerNames } from "../../../../lib/useCustomerNames";
+import { statusInfo } from "../../../../lib/status";
+import { formatMoney } from "../../../../lib/format";
+import { localDateTime } from "../../../../lib/datetime";
+import { useOrganizationTimezone } from "../../../../lib/appointments/components";
+import { LIST_LIMIT, ListPage, useCreateFromUrl } from "../../../../components/patterns/ListPage";
+import { Badge } from "../../../../components/ui/Data";
+import { Button } from "../../../../components/ui/Button";
+import { Field, SearchInput } from "../../../../components/ui/Form";
+import { Modal } from "../../../../components/ui/Overlay";
+import { Alert, ErrorNotice } from "../../../../components/ui/Feedback";
 
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  DRAFT: "Rascunho",
-  CONFIRMED: "Confirmado",
-  COMPLETED: "Concluído",
-  CANCELED: "Cancelado",
-};
+const ORDER_STATUSES: OrderStatus[] = ["DRAFT", "CONFIRMED", "COMPLETED", "CANCELED"];
 
-function statusBadgeClass(status: OrderStatus): string {
-  switch (status) {
-    case "CONFIRMED":
-      return "badge badge-gold";
-    case "COMPLETED":
-      return "badge badge-success";
-    case "CANCELED":
-      return "badge badge-destructive";
-    default:
-      return "badge";
-  }
-}
-
+/** Orders: list by status (the API filters by status/customer, newest first), create a DRAFT and continue in its detail page. */
 export default function OrdersPage() {
   const params = useParams<{ organizationId: string }>();
+  const org = params.organizationId;
   const router = useRouter();
   const { identity } = useSession();
-  const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
-
-  const [orders, setOrders] = useState<OrderSummary[] | null>(null);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const roleKey = identity?.memberships.find((m) => m.organizationId === org)?.roleKey;
   const [statusFilter, setStatusFilter] = useState<"" | OrderStatus>("");
-  const [error, setError] = useState<ApiError | Error | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-
-  async function load() {
-    setError(null);
-    try {
-      const [orderList, customerList] = await Promise.all([
-        listOrders(params.organizationId, { status: statusFilter || undefined }),
-        listCustomers(params.organizationId, { status: "ACTIVE" }),
-      ]);
-      setOrders(orderList);
-      setCustomers(customerList);
-    } catch (err) {
-      setError(err as Error);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
-
-  const customerName = (id: string | null) => customers.find((c) => c.id === id)?.name ?? "—";
+  const [showCreate, setShowCreate] = useCreateFromUrl();
+  const orders = useAsync(() => listOrders(org, { status: statusFilter || undefined, limit: LIST_LIMIT }), [org, statusFilter]);
+  const names = useCustomerNames(org, orders.data?.map((o) => o.customerId) ?? null);
+  const tz = useOrganizationTimezone(org);
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 style={{ fontSize: 20, margin: 0, flex: 1 }}>Pedidos</h1>
-        {roleCan(roleKey, "orders.create") && (
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+    <ListPage
+      title="Pedidos"
+      description="Vendas de produtos: rascunho → confirmado (consome stock) → concluído. Os preços ficam fixados no momento em que cada artigo é adicionado."
+      moduleName="Pedidos"
+      primaryAction={
+        roleCan(roleKey, "orders.create") ? (
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
             + Novo pedido
-          </button>
-        )}
-      </div>
-
-      <div className="toolbar">
-        <select className="select" style={{ maxWidth: 200 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "" | OrderStatus)}>
+          </Button>
+        ) : undefined
+      }
+      filters={
+        <select className="select" aria-label="Estado" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "" | OrderStatus)}>
           <option value="">Todos os estados</option>
-          <option value="DRAFT">Rascunho</option>
-          <option value="CONFIRMED">Confirmado</option>
-          <option value="COMPLETED">Concluído</option>
-          <option value="CANCELED">Cancelado</option>
+          {ORDER_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {statusInfo("order", s).label}
+            </option>
+          ))}
         </select>
-        <button className="btn" onClick={load}>
-          Filtrar
-        </button>
-      </div>
-
-      {error && (
-        <div className="card error-text" style={{ marginBottom: 16 }}>
-          {error.message}
-          {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-        </div>
-      )}
-
-      {showCreate && (
-        <CreateOrderForm
-          organizationId={params.organizationId}
-          customers={customers}
-          onClose={() => setShowCreate(false)}
-          onCreated={(orderId) => router.push(`/o/${params.organizationId}/orders/${orderId}`)}
-        />
-      )}
-
-      {orders === null && !error ? (
-        <div className="empty-state">A carregar…</div>
-      ) : orders && orders.length === 0 ? (
-        <div className="empty-state card">Nenhum pedido encontrado.</div>
-      ) : orders ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Cliente</th>
-              <th>Estado</th>
-              <th>Total</th>
-              <th>Criado em</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id}>
-                <td>
-                  <Link href={`/o/${params.organizationId}/orders/${o.id}`}>{o.id.slice(0, 8)}…</Link>
-                </td>
-                <td>{customerName(o.customerId)}</td>
-                <td>
-                  <span className={statusBadgeClass(o.status)}>{STATUS_LABEL[o.status]}</span>
-                </td>
-                <td>
-                  {o.total} {o.currency}
-                </td>
-                <td>{new Date(o.createdAt).toLocaleString("pt-PT")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-    </div>
+      }
+      state={orders}
+      rowKey={(o) => o.id}
+      empty={{ title: "Nenhum pedido encontrado." }}
+      columns={[
+        { key: "id", header: "Pedido", cell: (o) => <Link href={`/o/${org}/orders/${o.id}`}><code className="mono">{o.id.slice(0, 8)}…</code></Link> },
+        { key: "customer", header: "Cliente", wrap: true, cell: (o) => (o.customerId ? names[o.customerId] ?? "…" : <span className="subtle">Sem cliente</span>) },
+        { key: "status", header: "Estado", cell: (o) => <Badge tone={statusInfo("order", o.status).tone}>{statusInfo("order", o.status).label}</Badge> },
+        { key: "total", header: "Total", numeric: true, cell: (o) => formatMoney(o.total, o.currency) },
+        { key: "created", header: "Criado em", cell: (o) => (tz.timezone ? localDateTime(o.createdAt, tz.timezone) : new Date(o.createdAt).toLocaleString("pt-PT")) },
+      ]}
+    >
+      {showCreate && <CreateOrderDialog organizationId={org} onClose={() => setShowCreate(false)} onCreated={(orderId) => router.push(`/o/${org}/orders/${orderId}`)} />}
+    </ListPage>
   );
 }
 
-function CreateOrderForm({
-  organizationId,
-  customers,
-  onClose,
-  onCreated,
-}: {
-  organizationId: string;
-  customers: Customer[];
-  onClose: () => void;
-  onCreated: (orderId: string) => void;
-}) {
+function CreateOrderDialog({ organizationId, onClose, onCreated }: { organizationId: string; onClose: () => void; onCreated: (orderId: string) => void }) {
   const [customerId, setCustomerId] = useState("");
-  const [products, setProducts] = useState<Product[] | null>(null);
+  const [customerQuery, setCustomerQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<ApiError | Error | null>(null);
-
-  useEffect(() => {
-    listProducts(organizationId, { status: "ACTIVE" }).then(setProducts).catch((err) => setError(err as Error));
-  }, [organizationId]);
+  const [error, setError] = useState<unknown>(null);
+  const customers = useAsync(() => listCustomers(organizationId, { status: "ACTIVE", q: customerQuery.trim() || undefined, limit: LIST_LIMIT }), [organizationId, customerQuery]);
+  const priced = useAsync(async () => (await listProducts(organizationId, { status: "ACTIVE", limit: LIST_LIMIT })).some((p) => p.price !== null), [organizationId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -170,64 +91,39 @@ function CreateOrderForm({
       const order = await createOrder(organizationId, { customerId: customerId || undefined, items: [] });
       onCreated(order.id);
     } catch (err) {
-      setError(err as Error);
-    } finally {
+      setError(err);
       setSubmitting(false);
     }
   }
 
-  const priceable = products?.filter((p) => p.price !== null) ?? [];
-  const unpriceable = products?.filter((p) => p.price === null) ?? [];
-
   return (
-    <form onSubmit={handleSubmit} className="card" style={{ marginBottom: 16 }}>
-      <p style={{ marginTop: 0, color: "var(--color-foreground-muted)", fontSize: 14 }}>
-        Cria um pedido em rascunho — os produtos são adicionados a seguir, no detalhe do pedido.
-      </p>
-      <div className="field">
-        <label htmlFor="customer">Cliente (opcional)</label>
-        <select id="customer" className="select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-          <option value="">Sem cliente (venda anónima/balcão)</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {priceable.length === 0 && unpriceable.length > 0 && (
-        <div className="empty-state" style={{ marginBottom: 12 }}>
-          Nenhum produto activo tem preço definido ainda — define um preço em Produtos antes de o adicionar a um pedido.
+    <Modal open onClose={onClose} title="Novo pedido" description="Cria um pedido em rascunho — os produtos são adicionados a seguir, no detalhe do pedido.">
+      <form onSubmit={handleSubmit}>
+        <SearchInput label="Pesquisar cliente…" value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)} />
+        <div style={{ height: 8 }} />
+        <Field label="Cliente (opcional)">
+          <select id="customer" className="select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+            <option value="">Sem cliente (venda anónima/balcão)</option>
+            {(customers.data ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {priced.data === false && (
+          <Alert tone="warning" title="Sem produtos com preço">
+            Nenhum produto activo tem preço definido ainda — define um preço em Produtos antes de o adicionar a um pedido.
+          </Alert>
+        )}
+        {error ? <ErrorNotice error={error} /> : null}
+        <div className="modal-footer">
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button type="submit" variant="primary" loading={submitting}>
+            {submitting ? "A criar…" : "Criar rascunho"}
+          </Button>
         </div>
-      )}
-      {error && <ErrorBanner error={error} />}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? "A criar…" : "Criar rascunho"}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Cancelar
-        </button>
-      </div>
-    </form>
+      </form>
+    </Modal>
   );
-}
-
-function ErrorBanner({ error }: { error: ApiError | Error }) {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return <div className="card error-text">A tua sessão expirou. Por favor entra de novo.</div>;
-    if (error.status === 403)
-      return (
-        <div className="card error-text">
-          {error.code === "ENTITLEMENT_REQUIRED" ? "Esta organização não tem o módulo de Pedidos activo no seu plano." : "Não tens permissão para esta operação."}
-        </div>
-      );
-    return (
-      <div className="card error-text">
-        {error.message}
-        {error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-      </div>
-    );
-  }
-  return <div className="card error-text">{error.message}</div>;
 }

@@ -9,21 +9,19 @@ import { getOrganizationSettings } from "../api/organizationSettings";
 import { listProfessionals } from "../api/professionals";
 import type { Appointment, BookableSlot } from "../api/types";
 import { APPOINTMENT_STATUS_LABELS, addDaysTo, appointmentStatusBadge, localDate, localTime, todayIn } from "../datetime";
-import { describeAppointmentError } from "./messages";
+import { ErrorNotice as SharedErrorNotice } from "../../components/ui/Feedback";
 
-/** Error card in the existing Console style — pt-PT message for known Appointment codes, plus the request reference. */
+/** F29: the Console-wide ErrorNotice (components/ui/Feedback) plus, for a missing timezone, a direct link to Definições. */
 export function ErrorNotice({ error }: { error: Error }) {
   return (
-    <div className="error-text" role="alert" style={{ marginTop: 12 }}>
-      {describeAppointmentError(error)}
+    <>
+      <SharedErrorNotice error={error} />
       {error instanceof ApiError && error.code === "TIMEZONE_NOT_CONFIGURED" && (
-        <>
-          {" "}
+        <p style={{ marginTop: -8 }}>
           <OrgSettingsLink />
-        </>
+        </p>
       )}
-      {error instanceof ApiError && error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-    </div>
+    </>
   );
 }
 

@@ -2,185 +2,127 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSession } from "../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../lib/permissions";
 import { createProfessional, listProfessionals } from "../../../../lib/api/professionals";
-import { ApiError } from "../../../../lib/api/errors";
-import type { Professional } from "../../../../lib/api/types";
+import { useAsync } from "../../../../lib/useAsync";
+import { statusInfo } from "../../../../lib/status";
+import { LIST_LIMIT, ListPage, StatusFilter, useCreateFromUrl, type StatusFilterValue } from "../../../../components/patterns/ListPage";
+import { Badge } from "../../../../components/ui/Data";
+import { Button } from "../../../../components/ui/Button";
+import { SearchInput, Field } from "../../../../components/ui/Form";
+import { Modal } from "../../../../components/ui/Overlay";
+import { ErrorNotice } from "../../../../components/ui/Feedback";
+import { useToast } from "../../../../components/ui/Toast";
 
 export default function ProfessionalsPage() {
   const params = useParams<{ organizationId: string }>();
+  const org = params.organizationId;
   const { identity } = useSession();
-  const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
-
-  const [professionals, setProfessionals] = useState<Professional[] | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"" | "ACTIVE" | "ARCHIVED">("ACTIVE");
+  const roleKey = identity?.memberships.find((m) => m.organizationId === org)?.roleKey;
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ACTIVE");
   const [q, setQ] = useState("");
-  const [error, setError] = useState<ApiError | Error | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-
-  async function load() {
-    setError(null);
-    try {
-      setProfessionals(await listProfessionals(params.organizationId, { status: statusFilter || undefined, q: q || undefined }));
-    } catch (err) {
-      setError(err as Error);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  const [appliedQ, setAppliedQ] = useState("");
+  const [showCreate, setShowCreate] = useCreateFromUrl();
+  const professionals = useAsync(() => listProfessionals(org, { status: statusFilter || undefined, q: appliedQ || undefined, limit: LIST_LIMIT }), [org, statusFilter, appliedQ]);
+  const canCreate = roleCan(roleKey, "professionals.create");
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 style={{ fontSize: 20, margin: 0, flex: 1 }}>Profissionais</h1>
-        {roleCan(roleKey, "professionals.create") && (
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+    <ListPage
+      title="Profissionais"
+      description="Quem presta os serviços. Os horários e a disponibilidade de cada profissional estão na respectiva página."
+      moduleName="Profissionais"
+      primaryAction={
+        canCreate ? (
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
             + Novo profissional
-          </button>
-        )}
-      </div>
-
-      <div className="toolbar">
-        <input
-          className="input"
-          placeholder="Pesquisar por nome…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && load()}
-          style={{ maxWidth: 240 }}
-        />
-        <select className="select" style={{ maxWidth: 160 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "" | "ACTIVE" | "ARCHIVED")}>
-          <option value="">Todos os estados</option>
-          <option value="ACTIVE">Activos</option>
-          <option value="ARCHIVED">Arquivados</option>
-        </select>
-        <button className="btn" onClick={load}>
-          Filtrar
-        </button>
-      </div>
-
-      {error && <ErrorBanner error={error} />}
-
+          </Button>
+        ) : undefined
+      }
+      filters={
+        <>
+          <SearchInput label="Pesquisar por nome…" value={q} onChange={(e) => setQ(e.target.value)} onSubmit={() => setAppliedQ(q.trim())} />
+          <StatusFilter value={statusFilter} onChange={setStatusFilter} />
+          <Button onClick={() => setAppliedQ(q.trim())}>Filtrar</Button>
+        </>
+      }
+      state={professionals}
+      rowKey={(p) => p.id}
+      empty={{ title: "Nenhum profissional encontrado.", description: canCreate ? "Cria o primeiro profissional para depois lhe associar serviços e horário." : undefined }}
+      columns={[
+        { key: "name", header: "Nome", wrap: true, cell: (p) => <Link href={`/o/${org}/professionals/${p.id}`}>{p.name}</Link> },
+        { key: "contact", header: "Contacto", wrap: true, cell: (p) => [p.phone, p.email].filter(Boolean).join(" · ") || "—" },
+        { key: "status", header: "Estado", cell: (p) => <Badge tone={statusInfo("catalog", p.status).tone}>{statusInfo("catalog", p.status).label}</Badge> },
+      ]}
+    >
       {showCreate && (
-        <CreateProfessionalForm
-          organizationId={params.organizationId}
+        <CreateProfessionalDialog
+          organizationId={org}
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
-            load();
+            professionals.reload();
           }}
         />
       )}
-
-      {professionals === null && !error ? (
-        <div className="empty-state">A carregar…</div>
-      ) : professionals && professionals.length === 0 ? (
-        <div className="empty-state card">Nenhum profissional encontrado.</div>
-      ) : professionals ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>Contacto</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {professionals.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <Link href={`/o/${params.organizationId}/professionals/${p.id}`}>{p.name}</Link>
-                </td>
-                <td>{[p.phone, p.email].filter(Boolean).join(" · ") || "—"}</td>
-                <td>
-                  <span className={`badge${p.status === "ACTIVE" ? " badge-success" : ""}`}>{p.status}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-    </div>
+    </ListPage>
   );
 }
 
-function ErrorBanner({ error }: { error: ApiError | Error }) {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return <div className="card error-text">A tua sessão expirou. Por favor entra de novo.</div>;
-    if (error.status === 403)
-      return (
-        <div className="card error-text">
-          {error.code === "ENTITLEMENT_REQUIRED" ? "Esta organização não tem o módulo de Profissionais activo no seu plano." : "Não tens permissão para esta operação."}
-        </div>
-      );
-    return (
-      <div className="card error-text">
-        {error.message}
-        {error.requestId && <div className="request-ref">Referência: {error.requestId}</div>}
-      </div>
-    );
-  }
-  return <div className="card error-text">{error.message}</div>;
-}
-
-function CreateProfessionalForm({ organizationId, onClose, onCreated }: { organizationId: string; onClose: () => void; onCreated: () => void }) {
+function CreateProfessionalDialog({ organizationId, onClose, onCreated }: { organizationId: string; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<ApiError | Error | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError(new Error("O nome é obrigatório"));
+      setNameError("O nome é obrigatório");
       return;
     }
+    setNameError(null);
     setSubmitting(true);
     setError(null);
     try {
       await createProfessional(organizationId, { name, description: description || undefined, phone: phone || undefined, email: email || undefined });
+      toast.success("Profissional criado.");
       onCreated();
     } catch (err) {
-      setError(err as Error);
+      setError(err);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card" style={{ marginBottom: 16 }}>
-      <div className="field">
-        <label htmlFor="name">Nome</label>
-        <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-      </div>
-      <div className="field">
-        <label htmlFor="description">Descrição</label>
-        <textarea id="description" className="textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-      <div className="field">
-        <label htmlFor="phone">Telefone</label>
-        <input id="phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+244 923 456 789" />
-      </div>
-      <div className="field">
-        <label htmlFor="email">Email</label>
-        <input id="email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-      </div>
-      {error && <ErrorBanner error={error} />}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? "A criar…" : "Criar"}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Cancelar
-        </button>
-      </div>
-    </form>
+    <Modal open onClose={onClose} title="Novo profissional">
+      <form onSubmit={handleSubmit} noValidate>
+        <Field label="Nome" error={nameError}>
+          <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} data-autofocus required />
+        </Field>
+        <Field label="Descrição">
+          <textarea id="description" className="textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        <Field label="Telefone">
+          <input id="phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+244 923 456 789" />
+        </Field>
+        <Field label="Email">
+          <input id="email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        {error ? <ErrorNotice error={error} /> : null}
+        <div className="modal-footer">
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button type="submit" variant="primary" loading={submitting}>
+            {submitting ? "A criar…" : "Criar"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

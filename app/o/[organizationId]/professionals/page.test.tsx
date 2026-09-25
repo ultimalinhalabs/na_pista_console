@@ -59,7 +59,7 @@ describe("ProfessionalsPage — organization context", () => {
     mockSession("OWNER");
     listProfessionalsMock.mockResolvedValue([]);
     render(<ProfessionalsPage />);
-    await waitFor(() => expect(listProfessionalsMock).toHaveBeenCalledWith("org-a", { status: "ACTIVE", q: undefined }));
+    await waitFor(() => expect(listProfessionalsMock).toHaveBeenCalledWith("org-a", { status: "ACTIVE", q: undefined, limit: 100 }));
   });
 });
 
@@ -110,7 +110,7 @@ describe("ProfessionalsPage — list rendering", () => {
     render(<ProfessionalsPage />);
     await waitFor(() => expect(screen.getByText("Ana Costa")).toBeInTheDocument());
     expect(screen.getByText("+244923456789 · ana@example.com")).toBeInTheDocument();
-    expect(screen.getByText("ACTIVE")).toBeInTheDocument();
+    expect(screen.getByText("Activo")).toBeInTheDocument(); // F29: pt-PT status vocabulary (lib/status.ts)
   });
 });
 

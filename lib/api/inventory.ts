@@ -1,9 +1,10 @@
 import { callNaPista } from "./naPistaClient";
 import type { InventoryBalance, StockMovement, StockMovementType } from "./types";
 
-export function listInventory(organizationId: string, filters: { zeroStock?: boolean } = {}) {
+export function listInventory(organizationId: string, filters: { zeroStock?: boolean; limit?: number } = {}) {
   const params = new URLSearchParams();
   if (filters.zeroStock) params.set("zeroStock", "true");
+  if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
   return callNaPista<InventoryBalance[]>("GET", `/organizations/${organizationId}/inventory${qs ? `?${qs}` : ""}`);
 }
@@ -12,8 +13,9 @@ export function getInventoryBalance(organizationId: string, productId: string) {
   return callNaPista<InventoryBalance>("GET", `/organizations/${organizationId}/inventory/${productId}`);
 }
 
-export function listMovements(organizationId: string, productId: string) {
-  return callNaPista<StockMovement[]>("GET", `/organizations/${organizationId}/inventory/${productId}/movements`);
+export function listMovements(organizationId: string, productId: string, filters: { limit?: number } = {}) {
+  const qs = filters.limit ? `?limit=${filters.limit}` : "";
+  return callNaPista<StockMovement[]>("GET", `/organizations/${organizationId}/inventory/${productId}/movements${qs}`);
 }
 
 /**

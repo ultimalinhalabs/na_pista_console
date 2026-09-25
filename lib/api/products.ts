@@ -3,12 +3,13 @@ import type { Product } from "./types";
 
 export function listProducts(
   organizationId: string,
-  filters: { status?: "ACTIVE" | "ARCHIVED"; categoryId?: string; q?: string } = {},
+  filters: { status?: "ACTIVE" | "ARCHIVED"; categoryId?: string; q?: string; limit?: number } = {},
 ) {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.categoryId) params.set("categoryId", filters.categoryId);
   if (filters.q) params.set("q", filters.q);
+  if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
   return callNaPista<Product[]>("GET", `/organizations/${organizationId}/products${qs ? `?${qs}` : ""}`);
 }

@@ -1,10 +1,11 @@
 import { callNaPista } from "./naPistaClient";
 import type { Customer } from "./types";
 
-export function listCustomers(organizationId: string, filters: { status?: "ACTIVE" | "ARCHIVED"; q?: string } = {}) {
+export function listCustomers(organizationId: string, filters: { status?: "ACTIVE" | "ARCHIVED"; q?: string; limit?: number } = {}) {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.q) params.set("q", filters.q);
+  if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
   return callNaPista<Customer[]>("GET", `/organizations/${organizationId}/customers${qs ? `?${qs}` : ""}`);
 }

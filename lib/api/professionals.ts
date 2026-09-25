@@ -1,11 +1,12 @@
 import { callNaPista } from "./naPistaClient";
 import type { AssociatedService, Professional } from "./types";
 
-export function listProfessionals(organizationId: string, filters: { status?: "ACTIVE" | "ARCHIVED"; q?: string; serviceId?: string } = {}) {
+export function listProfessionals(organizationId: string, filters: { status?: "ACTIVE" | "ARCHIVED"; q?: string; serviceId?: string; limit?: number } = {}) {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.q) params.set("q", filters.q);
   if (filters.serviceId) params.set("serviceId", filters.serviceId);
+  if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
   return callNaPista<Professional[]>("GET", `/organizations/${organizationId}/professionals${qs ? `?${qs}` : ""}`);
 }

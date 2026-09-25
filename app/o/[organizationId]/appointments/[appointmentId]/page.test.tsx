@@ -87,7 +87,7 @@ describe("Appointment detail", () => {
     expect(await screen.findByText(/2026-10-05 · 09:00–10:00 \(60 min\)/)).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "João Silva" })).toHaveAttribute("href", "/o/org-a/customers/c-1");
     expect(screen.getByRole("link", { name: "Ana Costa" })).toHaveAttribute("href", "/o/org-a/professionals/p-1");
-    expect(screen.getByText("Personal Training — 10000.00 AOA")).toBeInTheDocument();
+    expect(screen.getByText(/Personal Training — 10\s000,00\sKz/)).toBeInTheDocument(); // F29: pt-AO money formatting
     expect(screen.getByText("Agendada")).toBeInTheDocument();
     expect(screen.getByLabelText("Notas")).toHaveValue("Traz toalha");
   });

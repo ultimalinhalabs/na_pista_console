@@ -19,6 +19,12 @@ vi.mock("../../../../lib/api/organizationSettings", () => ({
   updateOrganizationSettings: updateOrganizationSettingsMock,
 }));
 
+// F29: the page now also shows the UL Platform organization profile (its own data source).
+vi.mock("../../../../lib/api/platform", () => ({
+  getOrganization: vi.fn().mockResolvedValue({ id: "org-a", name: "Barbearia Central", slug: "barbearia-central", createdAt: "", updatedAt: "" }),
+  updateOrganization: vi.fn(),
+}));
+
 const { useSessionMock } = vi.hoisted(() => ({ useSessionMock: vi.fn() }));
 vi.mock("../../../../lib/session/SessionContext", () => ({
   useSession: useSessionMock,

@@ -18,6 +18,8 @@ const { getOrganizationSettingsMock } = vi.hoisted(() => ({ getOrganizationSetti
 vi.mock("../../../../../lib/api/organizationSettings", () => ({ getOrganizationSettings: getOrganizationSettingsMock }));
 
 vi.mock("../../../../../lib/api/professionals", () => ({ listProfessionals: vi.fn().mockResolvedValue([{ id: "p-1", name: "Ana Costa" }]) }));
+// F29: the page also lists the customer's recent orders (its own data source).
+vi.mock("../../../../../lib/api/orders", () => ({ listOrders: vi.fn().mockResolvedValue([]) }));
 
 const { useSessionMock } = vi.hoisted(() => ({ useSessionMock: vi.fn() }));
 vi.mock("../../../../../lib/session/SessionContext", () => ({ useSession: useSessionMock }));

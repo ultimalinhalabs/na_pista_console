@@ -12,6 +12,8 @@ import type { AssociatedService, BookableSlot, BookableSlots, Customer, Professi
 import { todayIn } from "../../../../../lib/datetime";
 import { ErrorNotice, SlotPicker, TimezoneMissing, useOrganizationTimezone } from "../../../../../lib/appointments/components";
 import { isConflict } from "../../../../../lib/appointments/messages";
+import { formatMoney } from "../../../../../lib/format";
+import { PageHeader } from "../../../../../components/patterns/Page";
 
 export default function NewAppointmentPage() {
   return (
@@ -167,8 +169,7 @@ function NewAppointmentFlow() {
 
   return (
     <div>
-      {backLink}
-      <h1 style={{ fontSize: 20 }}>Nova marcação</h1>
+      <PageHeader title="Nova marcação" description="Os horários propostos vêm do servidor e já descontam as marcações existentes." breadcrumbs={[{ label: "Marcações", href: `/o/${params.organizationId}/appointments` }, { label: "Nova marcação" }]} />
 
       <form onSubmit={handleCreate} className="card" style={{ marginBottom: 24 }}>
         <div className="field">
@@ -210,7 +211,7 @@ function NewAppointmentFlow() {
             <option value="">{professionalId ? "Escolhe um serviço…" : "Escolhe primeiro o profissional"}</option>
             {(services ?? []).map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} — {s.durationMinutes} min{s.price !== null ? ` — ${s.price} AOA` : ""}
+                {s.name} — {s.durationMinutes} min{s.price !== null ? ` — ${formatMoney(s.price)}` : ""}
               </option>
             ))}
           </select>
@@ -243,7 +244,7 @@ function NewAppointmentFlow() {
             <div>Cliente: {customer.name}</div>
             <div>Profissional: {professional.name}</div>
             <div>
-              Serviço: {service.name} — {slots?.durationMinutes ?? service.durationMinutes} min{service.price !== null ? ` — ${service.price} AOA` : " — sem preço"}
+              Serviço: {service.name} — {slots?.durationMinutes ?? service.durationMinutes} min{service.price !== null ? ` — ${formatMoney(service.price)}` : " — sem preço"}
             </div>
             <div>
               Data/hora: {date} às {selected.localStartTime} ({tz.timezone})

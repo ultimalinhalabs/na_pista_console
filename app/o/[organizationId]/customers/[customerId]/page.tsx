@@ -7,6 +7,7 @@ import { useSession } from "../../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../../lib/permissions";
 import { archiveCustomer, getCustomer, updateCustomer } from "../../../../../lib/api/customers";
 import { ApiError } from "../../../../../lib/api/errors";
+import { AppointmentsSection } from "../../../../../lib/appointments/components";
 import type { Customer } from "../../../../../lib/api/types";
 
 export default function CustomerDetailPage() {
@@ -136,6 +137,18 @@ export default function CustomerDetailPage() {
             )}
           </div>
         </form>
+      )}
+
+      {/* ---- Marcações (F27): this customer's appointments in a bounded window (≤ 31 days per query) ---- */}
+      {customer && roleCan(roleKey, "appointments.read") && (
+        <div style={{ marginTop: 24 }}>
+          <AppointmentsSection
+            organizationId={params.organizationId}
+            filter={{ customerId: params.customerId }}
+            canCreate={roleCan(roleKey, "appointments.create") && customer.status === "ACTIVE"}
+            defaultRangeDays={31}
+          />
+        </div>
       )}
     </div>
   );

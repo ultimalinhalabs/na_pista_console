@@ -19,6 +19,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "services.read", "services.create", "services.update",
     "professionals.read", "professionals.create", "professionals.update",
     "scheduling.read", "scheduling.create", "scheduling.update",
+    "appointments.read", "appointments.create", "appointments.update",
   ],
   ADMIN: [
     "products.read", "products.create", "products.update", "products.delete",
@@ -29,6 +30,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "services.read", "services.create", "services.update",
     "professionals.read", "professionals.create", "professionals.update",
     "scheduling.read", "scheduling.create", "scheduling.update",
+    "appointments.read", "appointments.create", "appointments.update",
   ],
   MANAGER: [
     "products.read", "products.create", "products.update",
@@ -39,10 +41,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "services.read", "services.create", "services.update",
     "professionals.read", "professionals.create", "professionals.update",
     "scheduling.read", "scheduling.create", "scheduling.update",
+    "appointments.read", "appointments.create", "appointments.update",
   ],
   STAFF: [
     "products.read", "categories.read", "customers.read", "inventory.read", "orders.read",
-    "services.read", "professionals.read", "scheduling.read",
+    "services.read", "professionals.read", "scheduling.read", "appointments.read",
   ],
 };
 

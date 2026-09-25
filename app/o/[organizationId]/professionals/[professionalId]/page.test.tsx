@@ -53,6 +53,14 @@ vi.mock("../../../../../lib/api/scheduling", () => ({
   getAvailability: getAvailabilityMock,
 }));
 
+// F27: the page now embeds the shared "Marcações" section, which has its own
+// data dependencies and its own tests (appointments/*.test.tsx) — stubbed
+// here so this file keeps testing only the F25/F26 sections it always did.
+const { appointmentsSectionMock } = vi.hoisted(() => ({ appointmentsSectionMock: vi.fn<(props: unknown) => null>(() => null) }));
+vi.mock("../../../../../lib/appointments/components", () => ({
+  AppointmentsSection: appointmentsSectionMock,
+}));
+
 const { useSessionMock } = vi.hoisted(() => ({ useSessionMock: vi.fn() }));
 vi.mock("../../../../../lib/session/SessionContext", () => ({
   useSession: useSessionMock,
@@ -495,5 +503,31 @@ describe("ProfessionalDetailPage — availability preview (F26, ADR-041: working
     await user.click(screen.getByText("Consultar"));
 
     await waitFor(() => expect(screen.getByText(/ainda não configurou um fuso horário/)).toBeInTheDocument());
+  });
+});
+
+describe("ProfessionalDetailPage — Marcações (F27 integration)", () => {
+  it("embeds the shared appointments section filtered to THIS professional, with create allowed for an ACTIVE professional and a MANAGER", async () => {
+    mockSession("MANAGER");
+    getProfessionalMock.mockResolvedValue(professional());
+    render(<ProfessionalDetailPage />);
+    await waitFor(() => expect(appointmentsSectionMock).toHaveBeenCalled());
+    expect(appointmentsSectionMock.mock.lastCall![0]).toMatchObject({ organizationId: "org-a", filter: { professionalId: "p-1" }, canCreate: true });
+  });
+
+  it("no create entry for STAFF, nor for an ARCHIVED professional", async () => {
+    mockSession("STAFF");
+    getProfessionalMock.mockResolvedValue(professional());
+    const { unmount } = render(<ProfessionalDetailPage />);
+    await waitFor(() => expect(appointmentsSectionMock).toHaveBeenCalled());
+    expect(appointmentsSectionMock.mock.lastCall![0]).toMatchObject({ canCreate: false });
+    unmount();
+
+    appointmentsSectionMock.mockClear();
+    mockSession("MANAGER");
+    getProfessionalMock.mockResolvedValue(professional({ status: "ARCHIVED" }));
+    render(<ProfessionalDetailPage />);
+    await waitFor(() => expect(appointmentsSectionMock).toHaveBeenCalled());
+    expect(appointmentsSectionMock.mock.lastCall![0]).toMatchObject({ canCreate: false });
   });
 });

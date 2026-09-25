@@ -183,3 +183,49 @@ export interface Availability {
   timezone: string;
   days: AvailabilityDay[];
 }
+
+/** ADR-043: three states only — SCHEDULED (created directly, occupies time), COMPLETED and CANCELED (both terminal). */
+export type AppointmentStatus = "SCHEDULED" | "COMPLETED" | "CANCELED";
+
+/**
+ * ADR-042: one Customer, one Professional, one Service, one absolute
+ * `[startAt, endAt)` interval (ISO-8601 UTC instants — display them in the
+ * ORGANIZATION timezone, never the browser's). `serviceName`/
+ * `servicePrice`/`currency` are booking-time snapshots; `durationMinutes`
+ * is derived (`endAt - startAt`), frozen at booking.
+ */
+export interface Appointment {
+  id: string;
+  organizationId: string;
+  customerId: string;
+  professionalId: string;
+  serviceId: string;
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+  status: AppointmentStatus;
+  serviceName: string;
+  servicePrice: string | null;
+  currency: string;
+  notes: string | null;
+  cancellationReason: string | null;
+  canceledAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** ADR-040/044: bookable = F26 working start times − occupying appointments. ADVISORY — a slot can still be lost to a concurrent booking (409 APPOINTMENT_CONFLICT). */
+export interface BookableSlot {
+  localStartTime: string;
+  startAt: string;
+  endAt: string;
+}
+
+export interface BookableSlots {
+  timezone: string;
+  date: string;
+  serviceId: string;
+  durationMinutes: number;
+  slots: BookableSlot[];
+}

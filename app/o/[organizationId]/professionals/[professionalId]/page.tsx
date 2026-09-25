@@ -15,6 +15,7 @@ import {
 } from "../../../../../lib/api/professionals";
 import { createException, getAvailability, getSchedule, listExceptions, removeException, replaceSchedule } from "../../../../../lib/api/scheduling";
 import { ApiError } from "../../../../../lib/api/errors";
+import { AppointmentsSection } from "../../../../../lib/appointments/components";
 import type { AssociatedService, Availability, Professional, Service, ScheduleException, ScheduleRule } from "../../../../../lib/api/types";
 
 const DAY_LABELS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -30,6 +31,8 @@ export default function ProfessionalDetailPage() {
   const roleKey = identity?.memberships.find((m) => m.organizationId === params.organizationId)?.roleKey;
   const canEdit = roleCan(roleKey, "professionals.update");
   const canEditSchedule = roleCan(roleKey, "scheduling.update");
+  const canReadAppointments = roleCan(roleKey, "appointments.read");
+  const canCreateAppointments = roleCan(roleKey, "appointments.create");
 
   const [professional, setProfessional] = useState<Professional | null>(null);
   const [associatedServices, setAssociatedServices] = useState<AssociatedService[] | null>(null);
@@ -525,7 +528,7 @@ export default function ProfessionalDetailPage() {
       {/* ---- Disponibilidade (computed, read-only) — distinct from the schedule configuration above (ADR-040 D14) ---- */}
       <h2 style={{ fontSize: 16 }}>Disponibilidade</h2>
       <p style={{ fontSize: 13, color: "var(--np-foreground-muted)" }}>
-        Horário de trabalho calculado a partir da configuração acima — não é uma garantia de reserva (ainda não existem Marcações nesta versão).
+        Horário de trabalho calculado a partir da configuração acima — não desconta marcações existentes e não é uma garantia de reserva. Para marcar, usa “Nova marcação”: os horários propostos aí já descontam as marcações.
       </p>
       <form onSubmit={handleCheckAvailability} className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -585,6 +588,11 @@ export default function ProfessionalDetailPage() {
             </tbody>
           </table>
         )
+      )}
+
+      {/* ---- Marcações (F27) — read-only list + entry into the shared create flow; no booking logic here ---- */}
+      {canReadAppointments && professional && (
+        <AppointmentsSection organizationId={params.organizationId} filter={{ professionalId: params.professionalId }} canCreate={canCreateAppointments && professional.status === "ACTIVE"} defaultRangeDays={7} />
       )}
     </div>
   );

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession } from "../../../../../lib/session/SessionContext";
 import { roleCan } from "../../../../../lib/permissions";
-import { cancelAppointment, completeAppointment, getAppointment, getBookableSlots, updateAppointment } from "../../../../../lib/api/appointments";
+import { cancelAppointment, completeAppointment, getAppointment, getBookableSlots, markNoShow, updateAppointment } from "../../../../../lib/api/appointments";
 import { getCustomer } from "../../../../../lib/api/customers";
 import { ApiError } from "../../../../../lib/api/errors";
 import { getProfessional, listProfessionals } from "../../../../../lib/api/professionals";
@@ -17,7 +17,9 @@ import { isConflict } from "../../../../../lib/appointments/messages";
 /**
  * F27 appointment detail (F27A §42). Mutations are shown only when the
  * role allows (`appointments.update`, UX only — the API is the gate) AND
- * the appointment is SCHEDULED (ADR-043: COMPLETED/CANCELED are terminal).
+ * the appointment is SCHEDULED (ADR-043/048: COMPLETED, CANCELED and
+ * NO_SHOW are terminal). "Too early" for complete/no-show is decided by the
+ * server clock only — the buttons are not hidden by the browser's clock.
  * After every mutation the screen is replaced by the SERVER's response —
  * never an optimistic local guess.
  */
@@ -54,8 +56,9 @@ export default function AppointmentDetailPage() {
     setNotes(next.notes ?? "");
   }
 
-  async function load() {
-    setError(null);
+  /** `keepError`: refresh the server state after a failed action WITHOUT hiding the error that explains it. */
+  async function load(options: { keepError?: boolean } = {}) {
+    if (!options.keepError) setError(null);
     setNotFound(false);
     try {
       const a = await getAppointment(params.organizationId, params.appointmentId);
@@ -91,8 +94,8 @@ export default function AppointmentDetailPage() {
       return true;
     } catch (err) {
       setError(err as Error);
-      // A terminal/changed state on the server means our copy is stale — reload it.
-      if (err instanceof ApiError && err.code === "INVALID_APPOINTMENT_STATE") await load();
+      // A terminal/changed state, or a time rule the server just evaluated, means our copy may be stale — reload it.
+      if (err instanceof ApiError && ["INVALID_APPOINTMENT_STATE", "APPOINTMENT_COMPLETION_TOO_EARLY", "APPOINTMENT_NO_SHOW_TOO_EARLY"].includes(err.code)) await load({ keepError: true });
       return false;
     } finally {
       setBusy(false);
@@ -144,7 +147,7 @@ export default function AppointmentDetailPage() {
         setConflict(true);
         await loadRescheduleSlots();
       } else if (err instanceof ApiError && err.code === "INVALID_APPOINTMENT_STATE") {
-        await load();
+        await load({ keepError: true });
       }
     } finally {
       setBusy(false);
@@ -208,6 +211,14 @@ export default function AppointmentDetailPage() {
               </div>
             </div>
           )}
+          {appointment.status === "NO_SHOW" && appointment.noShowAt && (
+            <div className="field">
+              <label>Falta registada</label>
+              <div>
+                {localDateTime(appointment.noShowAt, timezone)} — o cliente não compareceu; o horário continua ocupado.
+              </div>
+            </div>
+          )}
           {appointment.status === "COMPLETED" && appointment.completedAt && (
             <div className="field">
               <label>Concluída</label>
@@ -261,6 +272,9 @@ export default function AppointmentDetailPage() {
             </button>
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(() => completeAppointment(params.organizationId, params.appointmentId))}>
               Concluir
+            </button>
+            <button type="button" className="btn" disabled={busy} onClick={() => run(() => markNoShow(params.organizationId, params.appointmentId))}>
+              Marcar como falta
             </button>
             <button type="button" className="btn btn-danger" onClick={() => setCancelOpen(true)} disabled={busy}>
               Cancelar marcação

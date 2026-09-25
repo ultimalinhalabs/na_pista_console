@@ -36,6 +36,11 @@ export function completeAppointment(organizationId: string, appointmentId: strin
   return callNaPista<Appointment>("POST", `/organizations/${organizationId}/appointments/${appointmentId}/complete`);
 }
 
+/** ADR-048: SCHEDULED -> NO_SHOW. No body. The server clock decides "too early" (409 APPOINTMENT_NO_SHOW_TOO_EARLY). */
+export function markNoShow(organizationId: string, appointmentId: string) {
+  return callNaPista<Appointment>("POST", `/organizations/${organizationId}/appointments/${appointmentId}/no-show`);
+}
+
 /** Advisory bookable slots for ONE local date and ONE service — computed server-side from F26 availability minus existing bookings. */
 export function getBookableSlots(organizationId: string, professionalId: string, query: { date: string; serviceId: string }) {
   const params = new URLSearchParams({ date: query.date, serviceId: query.serviceId });

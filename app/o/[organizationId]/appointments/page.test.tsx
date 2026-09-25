@@ -44,6 +44,7 @@ export function appointment(overrides: Partial<Appointment> = {}): Appointment {
     cancellationReason: null,
     canceledAt: null,
     completedAt: null,
+    noShowAt: null,
     createdAt: "2026-10-01T10:00:00.000Z",
     updatedAt: "2026-10-01T10:00:00.000Z",
     ...overrides,
@@ -93,6 +94,14 @@ describe("Appointments day view", () => {
     await waitFor(() => expect(listAppointmentsMock).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText("Data"), { target: { value: "2026-12-24" } });
     await waitFor(() => expect(listAppointmentsMock).toHaveBeenLastCalledWith("org-a", expect.objectContaining({ from: "2026-12-24", to: "2026-12-24" })));
+  });
+
+  it("NO_SHOW appointments show the 'Falta' badge and are NOT muted (they still occupy the slot)", async () => {
+    listAppointmentsMock.mockResolvedValue([appointment({ status: "NO_SHOW", noShowAt: "2026-10-05T08:20:00.000Z" })]);
+    render(<AppointmentsDayPage />);
+    const badge = await screen.findByText("Falta");
+    expect(badge).toHaveClass("badge-warning");
+    expect(badge.closest("tr")).not.toHaveStyle({ opacity: "0.55" });
   });
 
   it("empty state", async () => {

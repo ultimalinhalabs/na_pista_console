@@ -53,10 +53,12 @@ export const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
   SCHEDULED: "Agendada",
   COMPLETED: "Concluída",
   CANCELED: "Cancelada",
+  NO_SHOW: "Falta",
 };
 
 export function appointmentStatusBadge(status: string): string {
   if (status === "SCHEDULED") return "badge badge-gold";
   if (status === "COMPLETED") return "badge badge-success";
+  if (status === "NO_SHOW") return "badge badge-warning";
   return "badge";
 }

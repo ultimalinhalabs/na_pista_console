@@ -184,8 +184,8 @@ export interface Availability {
   days: AvailabilityDay[];
 }
 
-/** ADR-043: three states only — SCHEDULED (created directly, occupies time), COMPLETED and CANCELED (both terminal). */
-export type AppointmentStatus = "SCHEDULED" | "COMPLETED" | "CANCELED";
+/** ADR-043 + ADR-048 (F28B): SCHEDULED (created directly) -> COMPLETED | CANCELED | NO_SHOW, all terminal. Only CANCELED releases the time slot. */
+export type AppointmentStatus = "SCHEDULED" | "COMPLETED" | "CANCELED" | "NO_SHOW";
 
 /**
  * ADR-042: one Customer, one Professional, one Service, one absolute
@@ -211,6 +211,7 @@ export interface Appointment {
   cancellationReason: string | null;
   canceledAt: string | null;
   completedAt: string | null;
+  noShowAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

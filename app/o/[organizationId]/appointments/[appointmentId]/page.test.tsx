@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   cancelAppointment: vi.fn(),
   completeAppointment: vi.fn(),
   getBookableSlots: vi.fn(),
+  markNoShow: vi.fn(),
 }));
 vi.mock("../../../../../lib/api/appointments", () => api);
 
@@ -49,6 +50,7 @@ function appointment(overrides: Partial<Appointment> = {}): Appointment {
     cancellationReason: null,
     canceledAt: null,
     completedAt: null,
+    noShowAt: null,
     createdAt: "2026-10-01T10:00:00.000Z",
     updatedAt: "2026-10-01T10:00:00.000Z",
     ...overrides,
@@ -190,5 +192,69 @@ describe("Appointment detail", () => {
     await userEvent.click(screen.getByRole("button", { name: "Concluir" }));
     expect(await screen.findByText("Cancelada", { selector: "span" })).toBeInTheDocument();
     expect(api.getAppointment).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Appointment detail — NO_SHOW (F28B, ADR-048)", () => {
+  it("'Marcar como falta' is offered for a SCHEDULED appointment to a role with appointments.update", async () => {
+    render(<AppointmentDetailPage />);
+    expect(await screen.findByRole("button", { name: "Marcar como falta" })).toBeInTheDocument();
+  });
+
+  it("success: sends the request with no body, re-renders from the server response — Falta badge, timestamp, still occupied, no further actions", async () => {
+    api.markNoShow.mockResolvedValue(appointment({ status: "NO_SHOW", noShowAt: "2026-10-05T08:20:00.000Z" }));
+    render(<AppointmentDetailPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Marcar como falta" }));
+    await waitFor(() => expect(api.markNoShow).toHaveBeenCalledWith("org-a", "a-1"));
+    expect(await screen.findByText("Falta", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText(/2026-10-05 09:20 — o cliente não compareceu; o horário continua ocupado/)).toBeInTheDocument();
+    for (const name of ["Marcar como falta", "Concluir", "Reagendar", "Cancelar marcação", "Guardar notas"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("too early (server decides): explained in pt-PT, and the appointment is reloaded from the server", async () => {
+    api.markNoShow.mockRejectedValue(new ApiError(409, "APPOINTMENT_NO_SHOW_TOO_EARLY", "raw", "req-7"));
+    render(<AppointmentDetailPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Marcar como falta" }));
+    expect(await screen.findByText(/a falta só pode ser registada a partir da hora de início/)).toBeInTheDocument();
+    expect(screen.getByText("Referência: req-7")).toBeInTheDocument();
+    await waitFor(() => expect(api.getAppointment).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Agendada")).toBeInTheDocument();
+  });
+
+  it("permission: STAFF never sees the action", async () => {
+    asRole("STAFF");
+    render(<AppointmentDetailPage />);
+    await screen.findByText("Agendada");
+    expect(screen.queryByRole("button", { name: "Marcar como falta" })).not.toBeInTheDocument();
+  });
+
+  it("a 403 from the server (UI bypassed / role changed) is explained, nothing changes", async () => {
+    api.markNoShow.mockRejectedValue(new ApiError(403, "FORBIDDEN", "Missing permission: appointments.update", null));
+    render(<AppointmentDetailPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Marcar como falta" }));
+    expect(await screen.findByText("Não tens permissão para esta operação.")).toBeInTheDocument();
+    expect(screen.getByText("Agendada")).toBeInTheDocument();
+  });
+
+  it("terminal NO_SHOW loaded from the server: shows Falta, no mutation controls", async () => {
+    api.getAppointment.mockResolvedValue(appointment({ status: "NO_SHOW", noShowAt: "2026-10-05T08:20:00.000Z" }));
+    render(<AppointmentDetailPage />);
+    expect(await screen.findByText("Falta", { selector: "span" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar como falta" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Concluir" })).not.toBeInTheDocument();
+  });
+
+  it("COMPLETED / CANCELED appointments never offer the action", async () => {
+    api.getAppointment.mockResolvedValue(appointment({ status: "COMPLETED", completedAt: "2026-10-05T09:00:00.000Z" }));
+    const { unmount } = render(<AppointmentDetailPage />);
+    await screen.findByText("Concluída", { selector: "span" });
+    expect(screen.queryByRole("button", { name: "Marcar como falta" })).not.toBeInTheDocument();
+    unmount();
+    api.getAppointment.mockResolvedValue(appointment({ status: "CANCELED", canceledAt: "2026-10-02T10:00:00.000Z" }));
+    render(<AppointmentDetailPage />);
+    await screen.findByText("Cancelada", { selector: "span" });
+    expect(screen.queryByRole("button", { name: "Marcar como falta" })).not.toBeInTheDocument();
   });
 });

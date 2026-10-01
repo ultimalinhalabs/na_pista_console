@@ -11,10 +11,11 @@ vi.mock("next/navigation", () => ({ useParams: () => ({ organizationId: "org-a" 
 
 const api = vi.hoisted(() => ({
   listAppointments: vi.fn(),
-  listCustomers: vi.fn(),
+  countCustomers: vi.fn(),
   getCustomer: vi.fn(),
-  listInventory: vi.fn(),
+  listInventoryPage: vi.fn(),
   listOrders: vi.fn(),
+  countOrders: vi.fn(),
   listProfessionals: vi.fn(),
   getOrganizationSettings: vi.fn(),
   listMembers: vi.fn(),
@@ -22,9 +23,9 @@ const api = vi.hoisted(() => ({
   removeMember: vi.fn(),
 }));
 vi.mock("../../../lib/api/appointments", () => ({ listAppointments: api.listAppointments }));
-vi.mock("../../../lib/api/customers", () => ({ listCustomers: api.listCustomers, getCustomer: api.getCustomer }));
-vi.mock("../../../lib/api/inventory", () => ({ listInventory: api.listInventory }));
-vi.mock("../../../lib/api/orders", () => ({ listOrders: api.listOrders }));
+vi.mock("../../../lib/api/customers", () => ({ countCustomers: api.countCustomers, getCustomer: api.getCustomer }));
+vi.mock("../../../lib/api/inventory", () => ({ listInventoryPage: api.listInventoryPage }));
+vi.mock("../../../lib/api/orders", () => ({ listOrders: api.listOrders, countOrders: api.countOrders }));
 vi.mock("../../../lib/api/professionals", () => ({ listProfessionals: api.listProfessionals }));
 vi.mock("../../../lib/api/organizationSettings", () => ({ getOrganizationSettings: api.getOrganizationSettings }));
 vi.mock("../../../lib/api/platform", () => ({ listMembers: api.listMembers, updateMember: api.updateMember, removeMember: api.removeMember }));
@@ -52,11 +53,14 @@ beforeEach(() => {
     { id: "a-1", organizationId: "org-a", customerId: "c-1", professionalId: "p-1", serviceId: "s-1", startAt: "2026-09-25T09:00:00.000Z", endAt: "2026-09-25T09:30:00.000Z", durationMinutes: 30, status: "SCHEDULED", serviceName: "Corte", servicePrice: "3000.00", currency: "AOA", notes: null, cancellationReason: null, canceledAt: null, completedAt: null, noShowAt: null, createdAt: "", updatedAt: "" },
     { id: "a-2", organizationId: "org-a", customerId: "c-1", professionalId: "p-1", serviceId: "s-1", startAt: "2026-09-25T10:00:00.000Z", endAt: "2026-09-25T10:30:00.000Z", durationMinutes: 30, status: "CANCELED", serviceName: "Corte", servicePrice: "3000.00", currency: "AOA", notes: null, cancellationReason: null, canceledAt: "", completedAt: null, noShowAt: null, createdAt: "", updatedAt: "" },
   ]);
-  api.listOrders.mockImplementation(async (_org: string, filter: { status?: string; limit?: number }) =>
-    filter.status === "DRAFT" ? [order(1), order(2)] : filter.status === "CONFIRMED" ? [order(3, "CONFIRMED")] : [order(9, "COMPLETED")],
-  );
-  api.listInventory.mockResolvedValue([{ id: "i-1", organizationId: "org-a", productId: "pr-1", quantity: "0.000", productName: "Gel fixador", productUnit: "UNIT", productStatus: "ACTIVE", createdAt: "", updatedAt: "" }]);
-  api.listCustomers.mockResolvedValue(Array.from({ length: 100 }, (_, i) => customer(i)));
+  api.listOrders.mockResolvedValue([order(9, "COMPLETED")]);
+  api.countOrders.mockImplementation(async (_org: string, filter: { status?: string }) => (filter.status === "DRAFT" ? 2 : filter.status === "CONFIRMED" ? 1 : 0));
+  api.listInventoryPage.mockResolvedValue({
+    data: [{ id: "i-1", organizationId: "org-a", productId: "pr-1", quantity: "0.000", productName: "Gel fixador", productUnit: "UNIT", productStatus: "ACTIVE", createdAt: "", updatedAt: "" }],
+    pagination: { page: 1, pageSize: 5, total: 1, totalPages: 1 },
+  });
+  // More than the old 100-row cap: the Console now shows the exact server total (ADR-051) instead of "100+".
+  api.countCustomers.mockResolvedValue(137);
 });
 
 function stat(label: string) {
@@ -64,20 +68,21 @@ function stat(label: string) {
 }
 
 describe("Overview", () => {
-  it("shows real counts from the APIs: scheduled today, open orders (draft+confirmed), zero stock, and '100+' when a list is capped", async () => {
+  it("shows exact counts from the APIs (pagination.total): scheduled today, open orders (draft+confirmed), zero stock, active customers", async () => {
     render(<OverviewPage />);
     await waitFor(() => expect(within(stat("Marcações hoje")).getByText("1")).toBeInTheDocument());
     expect(within(stat("Pedidos em aberto")).getByText("3")).toBeInTheDocument();
     expect(within(stat("Produtos sem stock")).getByText("1")).toBeInTheDocument();
-    expect(within(stat("Clientes activos")).getByText("100+")).toBeInTheDocument();
+    expect(within(stat("Clientes activos")).getByText("137")).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "Gel fixador" })).toHaveAttribute("href", "/o/org-a/inventory/pr-1");
     expect(screen.getByText("Concluído")).toBeInTheDocument();
-    expect(api.listInventory).toHaveBeenCalledWith("org-a", { zeroStock: true, limit: 100 });
+    expect(api.listInventoryPage).toHaveBeenCalledWith("org-a", { zeroStock: true, pageSize: 5 });
+    expect(api.countCustomers).toHaveBeenCalledWith("org-a", { status: "ACTIVE" });
     expect(api.listAppointments).toHaveBeenCalledWith("org-a", expect.objectContaining({ from: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }));
   });
 
   it("a module the plan does not include degrades to 'Módulo indisponível' without breaking the other blocks", async () => {
-    api.listInventory.mockRejectedValue(new ApiError(403, "ENTITLEMENT_REQUIRED", "x", null));
+    api.listInventoryPage.mockRejectedValue(new ApiError(403, "ENTITLEMENT_REQUIRED", "x", null));
     render(<OverviewPage />);
     expect(await screen.findByText(/módulo de Inventário activo/)).toBeInTheDocument();
     expect(within(stat("Produtos sem stock")).getByText("—")).toBeInTheDocument();
@@ -95,7 +100,7 @@ describe("Overview", () => {
   it("STAFF gets read-only blocks and no create actions", async () => {
     asRole("STAFF");
     render(<OverviewPage />);
-    await waitFor(() => expect(api.listOrders).toHaveBeenCalled());
+    await waitFor(() => expect(api.countOrders).toHaveBeenCalled());
     expect(screen.queryByRole("link", { name: "Nova marcação" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Novo pedido" })).not.toBeInTheDocument();
   });

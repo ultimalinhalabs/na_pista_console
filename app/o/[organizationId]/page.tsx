@@ -6,9 +6,9 @@ import type { ReactNode } from "react";
 import { useSession } from "../../../lib/session/SessionContext";
 import { roleCan } from "../../../lib/permissions";
 import { listAppointments } from "../../../lib/api/appointments";
-import { listCustomers } from "../../../lib/api/customers";
-import { listInventory } from "../../../lib/api/inventory";
-import { listOrders } from "../../../lib/api/orders";
+import { countCustomers } from "../../../lib/api/customers";
+import { listInventoryPage } from "../../../lib/api/inventory";
+import { countOrders, listOrders } from "../../../lib/api/orders";
 import { useAsync } from "../../../lib/useAsync";
 import { formatCount, formatMoney, displayQuantity, unitLabel } from "../../../lib/format";
 import { localDateTime, todayIn } from "../../../lib/datetime";
@@ -20,12 +20,11 @@ import { Alert, EmptyState, ErrorNotice, ModuleUnavailable, Skeleton } from "../
 import { ButtonLink } from "../../../components/ui/Button";
 import { AppointmentsTable, useAppointmentNames, useOrganizationTimezone } from "../../../lib/appointments/components";
 
-const LIST_LIMIT = 100;
-
 /** "100+" when the API page is full — the APIs cap lists at 100 and expose no total count (docs/f29-ui-audit.md §2). */
-function countLabel(rows: unknown[] | null): ReactNode {
-  if (!rows) return <Skeleton width={48} height={26} />;
-  return rows.length >= LIST_LIMIT ? `${formatCount(LIST_LIMIT)}+` : formatCount(rows.length);
+/** Exact counts from the API's `pagination.total` (ADR-051) — no client-side capping. */
+function countLabel(total: number | null | undefined): ReactNode {
+  if (total === null || total === undefined) return <Skeleton width={48} height={26} />;
+  return formatCount(total);
 }
 
 function Block({ state, moduleName, children }: { state: { error: unknown; loading: boolean }; moduleName: string; children: ReactNode }) {
@@ -39,7 +38,8 @@ function Block({ state, moduleName, children }: { state: { error: unknown; loadi
  * zero-stock products (server-side `zeroStock` filter), active customers.
  * Each block appears only if the role can read that module, and degrades
  * independently (entitlement / permission / error). No invented KPIs, no
- * activity feed (no audit-read API exists).
+ * activity feed (Na Pista has an audit read API since F30 — OWNER/ADMIN only — not surfaced here yet).
+ * Counts come from the API's exact `pagination.total` (ADR-051).
  */
 export default function OverviewPage() {
   const params = useParams<{ organizationId: string }>();
@@ -53,15 +53,15 @@ export default function OverviewPage() {
   const today = tz.timezone ? todayIn(tz.timezone) : null;
 
   const appointments = useAsync(() => listAppointments(org, { from: today!, to: today! }), [org, today], { enabled: can("appointments.read") && Boolean(today) });
-  const draftOrders = useAsync(() => listOrders(org, { status: "DRAFT", limit: LIST_LIMIT }), [org], { enabled: can("orders.read") });
-  const confirmedOrders = useAsync(() => listOrders(org, { status: "CONFIRMED", limit: LIST_LIMIT }), [org], { enabled: can("orders.read") });
+  const draftOrders = useAsync(() => countOrders(org, { status: "DRAFT" }), [org], { enabled: can("orders.read") });
+  const confirmedOrders = useAsync(() => countOrders(org, { status: "CONFIRMED" }), [org], { enabled: can("orders.read") });
   const recentOrders = useAsync(() => listOrders(org, { limit: 5 }), [org], { enabled: can("orders.read") });
-  const zeroStock = useAsync(() => listInventory(org, { zeroStock: true, limit: LIST_LIMIT }), [org], { enabled: can("inventory.read") });
-  const customers = useAsync(() => listCustomers(org, { status: "ACTIVE", limit: LIST_LIMIT }), [org], { enabled: can("customers.read") });
+  const zeroStock = useAsync(() => listInventoryPage(org, { zeroStock: true, pageSize: 5 }), [org], { enabled: can("inventory.read") });
+  const customers = useAsync(() => countCustomers(org, { status: "ACTIVE" }), [org], { enabled: can("customers.read") });
   const names = useAppointmentNames(org, appointments.data);
 
   const scheduled = appointments.data?.filter((a) => a.status === "SCHEDULED") ?? null;
-  const openOrders = draftOrders.data && confirmedOrders.data ? [...draftOrders.data, ...confirmedOrders.data] : null;
+  const openOrders = draftOrders.data != null && confirmedOrders.data != null ? draftOrders.data + confirmedOrders.data : null;
   const base = `/o/${org}`;
 
   return (
@@ -92,7 +92,7 @@ export default function OverviewPage() {
           <Stat label="Marcações hoje" value={tz.loading ? <Skeleton width={48} height={26} /> : tz.timezone ? (scheduled ? formatCount(scheduled.length) : appointments.error ? "—" : <Skeleton width={48} height={26} />) : "—"} hint={tz.loading || tz.timezone ? "por realizar (agendadas)" : "requer fuso horário"} href={`${base}/appointments`} />
         )}
         {can("orders.read") && <Stat label="Pedidos em aberto" value={draftOrders.error || confirmedOrders.error ? "—" : countLabel(openOrders)} hint="rascunho + confirmados" href={`${base}/orders`} />}
-        {can("inventory.read") && <Stat label="Produtos sem stock" value={zeroStock.error ? "—" : countLabel(zeroStock.data)} hint="saldo igual a zero" href={`${base}/inventory`} />}
+        {can("inventory.read") && <Stat label="Produtos sem stock" value={zeroStock.error ? "—" : countLabel(zeroStock.data?.pagination.total)} hint="saldo igual a zero" href={`${base}/inventory`} />}
         {can("customers.read") && <Stat label="Clientes activos" value={customers.error ? "—" : countLabel(customers.data)} href={`${base}/customers`} />}
       </div>
 
@@ -138,7 +138,7 @@ export default function OverviewPage() {
           <Section title="Produtos sem stock" actions={<Link href={`${base}/inventory`}>Ver inventário</Link>}>
             <Block state={zeroStock} moduleName="Inventário">
               <DataTable
-                rows={zeroStock.data?.slice(0, 5) ?? null}
+                rows={zeroStock.data?.data ?? null}
                 loading={zeroStock.loading && !zeroStock.data}
                 rowKey={(b) => b.id}
                 empty={{ title: "Nenhum produto com stock a zero." }}

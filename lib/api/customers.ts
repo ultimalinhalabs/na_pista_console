@@ -1,4 +1,4 @@
-import { callNaPista } from "./naPistaClient";
+import { callNaPista, callNaPistaPage } from "./naPistaClient";
 import type { Customer } from "./types";
 
 export function listCustomers(organizationId: string, filters: { status?: "ACTIVE" | "ARCHIVED"; q?: string; limit?: number } = {}) {
@@ -8,6 +8,14 @@ export function listCustomers(organizationId: string, filters: { status?: "ACTIV
   if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
   return callNaPista<Customer[]>("GET", `/organizations/${organizationId}/customers${qs ? `?${qs}` : ""}`);
+}
+
+/** Exact number of customers matching the filters — read from `pagination.total` (one row requested). */
+export async function countCustomers(organizationId: string, filters: { status?: "ACTIVE" | "ARCHIVED" } = {}) {
+  const params = new URLSearchParams({ pageSize: "1" });
+  if (filters.status) params.set("status", filters.status);
+  const page = await callNaPistaPage<Customer>(`/organizations/${organizationId}/customers?${params}`);
+  return page.pagination.total;
 }
 
 export function getCustomer(organizationId: string, customerId: string) {

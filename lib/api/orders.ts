@@ -1,4 +1,4 @@
-import { callNaPista } from "./naPistaClient";
+import { callNaPista, callNaPistaPage } from "./naPistaClient";
 import type { Order, OrderStatus, OrderSummary } from "./types";
 
 export function listOrders(organizationId: string, filters: { status?: OrderStatus; customerId?: string; limit?: number } = {}) {
@@ -8,6 +8,14 @@ export function listOrders(organizationId: string, filters: { status?: OrderStat
   if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
   return callNaPista<OrderSummary[]>("GET", `/organizations/${organizationId}/orders${qs ? `?${qs}` : ""}`);
+}
+
+/** Exact number of orders matching the filters — read from `pagination.total` (one row requested). */
+export async function countOrders(organizationId: string, filters: { status?: OrderStatus } = {}) {
+  const params = new URLSearchParams({ pageSize: "1" });
+  if (filters.status) params.set("status", filters.status);
+  const page = await callNaPistaPage<OrderSummary>(`/organizations/${organizationId}/orders?${params}`);
+  return page.pagination.total;
 }
 
 export function getOrder(organizationId: string, orderId: string) {

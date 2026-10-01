@@ -1,4 +1,4 @@
-import { callNaPista } from "./naPistaClient";
+import { callNaPista, callNaPistaPage } from "./naPistaClient";
 import type { InventoryBalance, StockMovement, StockMovementType } from "./types";
 
 export function listInventory(organizationId: string, filters: { zeroStock?: boolean; limit?: number } = {}) {
@@ -7,6 +7,15 @@ export function listInventory(organizationId: string, filters: { zeroStock?: boo
   if (filters.limit) params.set("limit", String(filters.limit));
   const qs = params.toString();
   return callNaPista<InventoryBalance[]>("GET", `/organizations/${organizationId}/inventory${qs ? `?${qs}` : ""}`);
+}
+
+/** One page of balances plus the exact total (`pagination.total`). */
+export function listInventoryPage(organizationId: string, filters: { zeroStock?: boolean; pageSize?: number } = {}) {
+  const params = new URLSearchParams();
+  if (filters.zeroStock) params.set("zeroStock", "true");
+  if (filters.pageSize) params.set("pageSize", String(filters.pageSize));
+  const qs = params.toString();
+  return callNaPistaPage<InventoryBalance>(`/organizations/${organizationId}/inventory${qs ? `?${qs}` : ""}`);
 }
 
 export function getInventoryBalance(organizationId: string, productId: string) {

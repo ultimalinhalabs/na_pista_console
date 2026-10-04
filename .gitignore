@@ -10,3 +10,24 @@ dist/
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
+
+# secrets, credentials and dumps — never commit (Phase 5.1 hardening)
+.env*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials*.json
+service-account*.json
+*.dump
+*.sql.gz
+dump*.sql
+backup*.sql
+*.sqlite
+*.sqlite3
+*.db
+/build/
+/dist/

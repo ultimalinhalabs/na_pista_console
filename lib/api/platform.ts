@@ -72,6 +72,20 @@ export interface OrganizationMember {
   createdAt: string;
 }
 
+export interface OrganizationInvitation {
+  id: string;
+  organizationId: string;
+  email: string;
+  roleKey: "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
+  /** A pending invitation past its expiry is already reported as "expired". */
+  status: "pending" | "accepted" | "declined" | "revoked" | "expired";
+  invitedByUserId: string | null;
+  expiresAt: string;
+  respondedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -139,6 +153,22 @@ export function updateMember(organizationId: string, membershipId: string, input
 }
 export function removeMember(organizationId: string, membershipId: string) {
   return callPlatform<unknown>("DELETE", `/organizations/${organizationId}/memberships/${membershipId}`);
+}
+
+/**
+ * ul-platform migration 0025 — team invitations by email. OWNER/ADMIN invite
+ * an email with a role; the person accepts it in their Última Linha account
+ * (UL Client), signed in with that VERIFIED email. A pending invitation takes
+ * a place under the plan's `members.max`. The Platform sends no email.
+ */
+export function listInvitations(organizationId: string) {
+  return callPlatform<OrganizationInvitation[]>("GET", `/organizations/${organizationId}/invitations`);
+}
+export function createInvitation(organizationId: string, input: { email: string; roleKey: string }) {
+  return callPlatform<OrganizationInvitation>("POST", `/organizations/${organizationId}/invitations`, input);
+}
+export function revokeInvitation(organizationId: string, invitationId: string) {
+  return callPlatform<OrganizationInvitation>("POST", `/organizations/${organizationId}/invitations/${invitationId}/revoke`);
 }
 
 // ---- usage (usage.read) ----

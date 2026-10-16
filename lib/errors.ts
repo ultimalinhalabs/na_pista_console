@@ -20,6 +20,9 @@ const MESSAGES: Record<string, string> = {
   CONFLICT: "O pedido entra em conflito com o estado actual. Actualiza a página e tenta de novo.",
   ENTITLEMENT_REQUIRED: "A subscrição actual desta organização não inclui este módulo.",
   LIMIT_EXCEEDED: "Foi atingido um limite do plano desta organização.",
+  // Team invitations (ul-platform 0025)
+  ALREADY_MEMBER: "Esta pessoa já é membro da organização.",
+  INVITATION_PENDING: "Já existe um convite pendente para este email. Revoga-o para enviar outro.",
   UPSTREAM_UNAVAILABLE: "Um serviço necessário está temporariamente indisponível. Tenta de novo dentro de momentos.",
   INTERNAL_ERROR: "Ocorreu um erro inesperado no servidor. Se persistir, partilha a referência abaixo com o suporte.",
   NETWORK_ERROR: "Não foi possível contactar o servidor. Verifica a ligação e tenta de novo.",

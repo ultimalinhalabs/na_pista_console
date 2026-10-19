@@ -13,6 +13,7 @@ import { Alert, ErrorNotice, PermissionDenied } from "../../../../../components/
 import { Button } from "../../../../../components/ui/Button";
 import { ConfirmDialog } from "../../../../../components/ui/Overlay";
 import { useToast } from "../../../../../components/ui/Toast";
+import { TeamInvitations } from "./TeamInvitations";
 
 const ROLES = ["OWNER", "ADMIN", "MANAGER", "STAFF"] as const;
 
@@ -25,9 +26,8 @@ type PendingChange =
  * F29 Team — the organization's UL Platform memberships (read: every
  * member; change role/status/remove: OWNER/ADMIN — the Platform enforces
  * it, including "never leave the organization without an active owner").
- * Adding members is not offered: the Platform API adds members by user id
- * only (no invite-by-email or user lookup exists) — recorded as a gap
- * rather than exposing a raw-UUID form to end users.
+ * Adding members: by email invitation (ul-platform migration 0025,
+ * `membership.create`) — the person accepts in their Última Linha account.
  */
 export default function TeamPage() {
   const params = useParams<{ organizationId: string }>();
@@ -37,6 +37,7 @@ export default function TeamPage() {
   const canRead = platformRoleCan(roleKey, "membership.read");
   const canUpdate = platformRoleCan(roleKey, "membership.update");
   const canRemove = platformRoleCan(roleKey, "membership.remove");
+  const canInvite = platformRoleCan(roleKey, "membership.create");
   const members = useAsync(() => listMembers(org), [org], { enabled: canRead });
   const [pending, setPending] = useState<PendingChange | null>(null);
   const toast = useToast();
@@ -78,7 +79,7 @@ export default function TeamPage() {
     },
     remove: {
       title: "Remover membro?",
-      description: `${pending.member.userEmail ?? "Este membro"} deixa de pertencer a esta organização. Para voltar, terá de ser adicionado de novo.`,
+      description: `${pending.member.userEmail ?? "Este membro"} deixa de pertencer a esta organização. Para voltar, terá de receber um novo convite.`,
       confirmLabel: "Remover",
       destructive: true,
     },
@@ -89,7 +90,7 @@ export default function TeamPage() {
       <PageHeader title="Equipa" description="Membros desta organização e respectivos papéis na UL Platform." breadcrumbs={[{ label: "Definições" }, { label: "Equipa" }]} />
       {!canUpdate && (
         <Alert tone="info" title="Só leitura">
-          Apenas Proprietários e Administradores podem alterar papéis ou remover membros.
+          Apenas Proprietários e Administradores podem convidar membros, alterar papéis ou remover membros.
         </Alert>
       )}
       <Section title="Membros">
@@ -147,8 +148,9 @@ export default function TeamPage() {
             ]}
           />
         )}
-        <p className="result-limit">Adicionar membros: a UL Platform ainda não disponibiliza convites por email nem pesquisa de utilizadores — pede ao suporte da plataforma.</p>
       </Section>
+
+      {canInvite && <TeamInvitations organizationId={org} roleKey={roleKey} />}
 
       {pending && dialog && (
         <ConfirmDialog open onClose={() => setPending(null)} title={dialog.title} description={dialog.description} confirmLabel={dialog.confirmLabel} destructive={dialog.destructive} onConfirm={() => apply(pending)} />

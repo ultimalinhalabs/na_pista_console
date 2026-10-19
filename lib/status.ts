@@ -36,6 +36,13 @@ const STATUS: Record<string, Record<string, { label: string; tone: BadgeTone }>>
     invited: { label: "Convidado", tone: "gold" },
     suspended: { label: "Suspenso", tone: "warning" },
   },
+  invitation: {
+    pending: { label: "Pendente", tone: "gold" },
+    accepted: { label: "Aceite", tone: "success" },
+    declined: { label: "Recusado", tone: "neutral" },
+    revoked: { label: "Revogado", tone: "neutral" },
+    expired: { label: "Expirado", tone: "warning" },
+  },
   movement: {
     RECEIPT: { label: "Entrada", tone: "success" },
     ADJUSTMENT_IN: { label: "Ajuste +", tone: "gold" },

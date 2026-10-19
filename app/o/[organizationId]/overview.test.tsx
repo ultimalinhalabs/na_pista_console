@@ -136,14 +136,15 @@ describe("Team", () => {
     expect(screen.getByText("ana@exemplo.ao")).toBeInTheDocument();
   });
 
-  it("MANAGER reads the team but gets no controls; there is no fake 'add member' form", async () => {
+  it("MANAGER reads the team but gets no controls; only OWNER/ADMIN get the invitation form", async () => {
     asRole("MANAGER");
     render(<TeamPage />);
     expect(await screen.findByText("rui@exemplo.ao")).toBeInTheDocument();
     expect(screen.getByText("Só leitura")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remover" })).not.toBeInTheDocument();
-    expect(screen.getByText(/ainda não disponibiliza convites/)).toBeInTheDocument();
+    expect(screen.getByText(/podem convidar membros/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Enviar convite" })).not.toBeInTheDocument();
   });
 });
 

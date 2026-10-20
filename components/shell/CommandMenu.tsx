@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { roleCan } from "../../lib/permissions";
-import { visibleNav } from "../../lib/navigation";
+import type { OrganizationModules } from "../../lib/api/types";
+import { moduleEnabled, visibleNav } from "../../lib/navigation";
 
 interface Command {
   id: string;
@@ -18,9 +19,9 @@ function normalize(text: string) {
 }
 
 /** Builds the command list from the SAME permission-filtered navigation the sidebar shows, plus creation shortcuts the role can use. */
-export function buildCommands(organizationId: string, roleKey: string | undefined): Command[] {
+export function buildCommands(organizationId: string, roleKey: string | undefined, modules?: OrganizationModules | null): Command[] {
   const base = `/o/${organizationId}`;
-  const navigation = visibleNav(roleKey).flatMap((group) =>
+  const navigation = visibleNav(roleKey, modules).flatMap((group) =>
     group.items.map((item) => ({
       id: `nav:${item.path}`,
       group: "Ir para",
@@ -30,21 +31,21 @@ export function buildCommands(organizationId: string, roleKey: string | undefine
     })),
   );
   const actions: Command[] = [];
-  if (roleCan(roleKey, "appointments.create")) actions.push({ id: "act:appointment", group: "Acções", label: "Nova marcação", href: `${base}/appointments/new`, keywords: "nova marcacao appointment create booking" });
-  if (roleCan(roleKey, "orders.create")) actions.push({ id: "act:order", group: "Acções", label: "Novo pedido", href: `${base}/orders?new=1`, keywords: "novo pedido order create" });
-  if (roleCan(roleKey, "products.create")) actions.push({ id: "act:product", group: "Acções", label: "Novo produto", href: `${base}/products?new=1`, keywords: "novo produto product create" });
-  if (roleCan(roleKey, "customers.create")) actions.push({ id: "act:customer", group: "Acções", label: "Novo cliente", href: `${base}/customers?new=1`, keywords: "novo cliente customer create" });
+  if (roleCan(roleKey, "appointments.create") && moduleEnabled("services", modules)) actions.push({ id: "act:appointment", group: "Acções", label: "Nova marcação", href: `${base}/appointments/new`, keywords: "nova marcacao appointment create booking" });
+  if (roleCan(roleKey, "orders.create") && moduleEnabled("orders", modules)) actions.push({ id: "act:order", group: "Acções", label: "Novo pedido", href: `${base}/orders?new=1`, keywords: "novo pedido order create" });
+  if (roleCan(roleKey, "products.create") && moduleEnabled("catalog", modules)) actions.push({ id: "act:product", group: "Acções", label: "Novo produto", href: `${base}/products?new=1`, keywords: "novo produto product create" });
+  if (roleCan(roleKey, "customers.create") && moduleEnabled("customers", modules)) actions.push({ id: "act:customer", group: "Acções", label: "Novo cliente", href: `${base}/customers?new=1`, keywords: "novo cliente customer create" });
   actions.push({ id: "act:orgs", group: "Acções", label: "Mudar de organização", href: "/", keywords: "organizacao switch trocar" });
   return [...navigation, ...actions];
 }
 
-export function CommandMenu({ organizationId, roleKey, open, onOpenChange }: { organizationId: string; roleKey: string | undefined; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function CommandMenu({ organizationId, roleKey, modules, open, onOpenChange }: { organizationId: string; roleKey: string | undefined; modules?: OrganizationModules | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
-  const commands = useMemo(() => buildCommands(organizationId, roleKey), [organizationId, roleKey]);
+  const commands = useMemo(() => buildCommands(organizationId, roleKey, modules), [organizationId, roleKey, modules]);
   const results = useMemo(() => {
     const terms = normalize(query).split(/\s+/).filter(Boolean);
     return terms.length === 0 ? commands : commands.filter((c) => terms.every((t) => c.keywords.includes(t) || normalize(c.label).includes(t)));

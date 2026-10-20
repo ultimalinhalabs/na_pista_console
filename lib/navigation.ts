@@ -1,3 +1,4 @@
+import type { OrganizationModules } from "./api/types";
 import { roleCan } from "./permissions";
 import { platformRoleCan } from "./platformPermissions";
 
@@ -9,6 +10,8 @@ export interface NavItem {
   permission?: string;
   /** UL Platform permission needed to show the item (UX only) */
   platformPermission?: string;
+  /** Na Pista module the organization's plan must enable (ADR-070; UX only — the API refuses anyway) */
+  module?: keyof OrganizationModules;
   /** extra words the command menu matches */
   keywords?: string;
 }
@@ -29,24 +32,24 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Operação",
     items: [
-      { label: "Pedidos", path: "/orders", permission: "orders.read", keywords: "orders encomendas vendas" },
-      { label: "Marcações", path: "/appointments", permission: "appointments.read", keywords: "appointments agenda calendario booking" },
-      { label: "Clientes", path: "/customers", permission: "customers.read", keywords: "customers" },
-      { label: "Inventário", path: "/inventory", permission: "inventory.read", keywords: "inventory stock" },
+      { label: "Pedidos", path: "/orders", permission: "orders.read", module: "orders", keywords: "orders encomendas vendas" },
+      { label: "Marcações", path: "/appointments", permission: "appointments.read", module: "services", keywords: "appointments agenda calendario booking" },
+      { label: "Clientes", path: "/customers", permission: "customers.read", module: "customers", keywords: "customers" },
+      { label: "Inventário", path: "/inventory", permission: "inventory.read", module: "catalog", keywords: "inventory stock" },
     ],
   },
   {
     label: "Catálogo",
     items: [
-      { label: "Produtos", path: "/products", permission: "products.read", keywords: "products" },
-      { label: "Categorias", path: "/categories", permission: "categories.read", keywords: "categories" },
-      { label: "Serviços", path: "/services", permission: "services.read", keywords: "services" },
-      { label: "Profissionais", path: "/professionals", permission: "professionals.read", keywords: "professionals staff equipa" },
+      { label: "Produtos", path: "/products", permission: "products.read", module: "catalog", keywords: "products" },
+      { label: "Categorias", path: "/categories", permission: "categories.read", module: "catalog", keywords: "categories" },
+      { label: "Serviços", path: "/services", permission: "services.read", module: "services", keywords: "services" },
+      { label: "Profissionais", path: "/professionals", permission: "professionals.read", module: "services", keywords: "professionals staff equipa" },
     ],
   },
   {
     label: "Agenda",
-    items: [{ label: "Horários e disponibilidade", path: "/scheduling", permission: "scheduling.read", keywords: "scheduling horario disponibilidade excepcoes availability" }],
+    items: [{ label: "Horários e disponibilidade", path: "/scheduling", permission: "scheduling.read", module: "services", keywords: "scheduling horario disponibilidade excepcoes availability" }],
   },
   {
     label: "Integrações",
@@ -68,10 +71,24 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export function visibleNav(roleKey: string | undefined): NavGroup[] {
+/**
+ * ADR-070 module filter. `modules` null/undefined = not known (still loading, or the API could not answer): items
+ * are filtered by role only — each page still gets the API's 403 ENTITLEMENT_REQUIRED if its module is not
+ * contracted. Once known, modules the plan does not enable are hidden.
+ */
+export function moduleEnabled(module: keyof OrganizationModules | undefined, modules: OrganizationModules | null | undefined): boolean {
+  return !module || !modules || modules[module];
+}
+
+export function visibleNav(roleKey: string | undefined, modules?: OrganizationModules | null): NavGroup[] {
   return NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (!item.permission || roleCan(roleKey, item.permission)) && (!item.platformPermission || platformRoleCan(roleKey, item.platformPermission))),
+    items: group.items.filter(
+      (item) =>
+        (!item.permission || roleCan(roleKey, item.permission)) &&
+        (!item.platformPermission || platformRoleCan(roleKey, item.platformPermission)) &&
+        moduleEnabled(item.module, modules),
+    ),
   })).filter((group) => group.items.length > 0);
 }
 

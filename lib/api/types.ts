@@ -137,6 +137,14 @@ export interface AssociatedService {
 }
 
 /** ADR-040: `null` means "not configured yet" — never a silent default (server/browser/UTC). IANA identifier only, e.g. "Africa/Luanda". */
+/** Na Pista ADR-070 — one entitlement per module (catalog = products/categories/stock; services = services/professionals/schedules/appointments). */
+export interface OrganizationModules {
+  catalog: boolean;
+  orders: boolean;
+  customers: boolean;
+  services: boolean;
+}
+
 export interface OrganizationSettings {
   organizationId: string;
   timezone: string;

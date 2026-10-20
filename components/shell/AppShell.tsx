@@ -4,9 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { SESSION_EXPIRED_EVENT } from "../../lib/api/errors";
+import { getOrganizationModules } from "../../lib/api/modules";
 import type { PlatformIdentity, PlatformMembership } from "../../lib/api/platformClient";
+import type { OrganizationModules } from "../../lib/api/types";
 import { activeNavPath, visibleNav } from "../../lib/navigation";
 import { ROLE_LABELS } from "../../lib/status";
+import { useAsync } from "../../lib/useAsync";
 import { Drawer } from "../ui/Overlay";
 import { Dropdown } from "../ui/Menu";
 import { CommandMenu } from "./CommandMenu";
@@ -25,7 +28,7 @@ export function environmentLabel(apiUrl: string = NA_PISTA_API_URL): string | nu
   }
 }
 
-function Sidebar({ organizationId, membership, memberships, onNavigate }: { organizationId: string; membership: PlatformMembership; memberships: PlatformMembership[]; onNavigate?: () => void }) {
+function Sidebar({ organizationId, membership, memberships, modules, onNavigate }: { organizationId: string; membership: PlatformMembership; memberships: PlatformMembership[]; modules: OrganizationModules | null; onNavigate?: () => void }) {
   const pathname = usePathname();
   const active = activeNavPath(pathname, organizationId);
   const base = `/o/${organizationId}`;
@@ -41,7 +44,7 @@ function Sidebar({ organizationId, membership, memberships, onNavigate }: { orga
         {env && <span className="badge" title={`API: ${NA_PISTA_API_URL}`}>{env}</span>}
       </div>
       <OrganizationSwitcher current={membership} memberships={memberships} />
-      {visibleNav(membership.roleKey).map((group, index) => (
+      {visibleNav(membership.roleKey, modules).map((group, index) => (
         <div key={group.label ?? `group-${index}`}>
           {group.label && <div className="sidebar-group-label">{group.label}</div>}
           {group.items.map((item) => (
@@ -126,6 +129,8 @@ export function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const router = useRouter();
+  // ADR-070: hide modules the plan does not enable. Unknown (loading/error) → role filter only; the API stays the authority.
+  const { data: modules } = useAsync(() => getOrganizationModules(organizationId), [organizationId]);
 
   useEffect(() => {
     async function onExpired() {
@@ -140,7 +145,7 @@ export function AppShell({
 
   return (
     <div className="shell">
-      <Sidebar organizationId={organizationId} membership={membership} memberships={identity.memberships} />
+      <Sidebar organizationId={organizationId} membership={membership} memberships={identity.memberships} modules={modules} />
       <div className="shell-main">
         <header className="shell-header">
           <button type="button" className="btn btn-ghost btn-icon shell-mobile-only" aria-label="Abrir navegação" onClick={() => setDrawerOpen(true)}>
@@ -165,9 +170,9 @@ export function AppShell({
         </main>
       </div>
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} label="Navegação">
-        <Sidebar organizationId={organizationId} membership={membership} memberships={identity.memberships} onNavigate={() => setDrawerOpen(false)} />
+        <Sidebar organizationId={organizationId} membership={membership} memberships={identity.memberships} modules={modules} onNavigate={() => setDrawerOpen(false)} />
       </Drawer>
-      <CommandMenu organizationId={organizationId} roleKey={membership.roleKey} open={commandOpen} onOpenChange={setCommandOpen} />
+      <CommandMenu organizationId={organizationId} roleKey={membership.roleKey} modules={modules} open={commandOpen} onOpenChange={setCommandOpen} />
     </div>
   );
 }

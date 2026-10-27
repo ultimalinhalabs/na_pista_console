@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { API_MODULES, COMMON_ERRORS, type ApiEndpoint, type ApiField } from "../../../../../lib/integration/apiCatalog";
+import { API_MODULES, COMMON_ERRORS, scopesOf, type ApiEndpoint, type ApiField } from "../../../../../lib/integration/apiCatalog";
 import { PageHeader, Section } from "../../../../../components/patterns/Page";
 import { CopyButton } from "../../../../../components/ui/Data";
 import { EmptyState } from "../../../../../components/ui/Feedback";
@@ -72,7 +72,7 @@ function Endpoint({ endpoint, organizationId }: { endpoint: ApiEndpoint; organiz
           Permissão: <code className="mono">{endpoint.permission}</code>
         </span>
         <span>
-          Âmbito: <code className="mono">{endpoint.scope}</code>
+          Âmbito: <code className="mono">{scopesOf(endpoint).join(" ou ")}</code>
         </span>
         <span>Resposta: {endpoint.success}</span>
       </div>
@@ -113,7 +113,7 @@ export default function ApiDocsPage() {
     if (!q) return API_MODULES;
     return API_MODULES.map((m) => ({
       ...m,
-      endpoints: m.endpoints.filter((e) => [e.path, e.summary, e.permission, e.scope, e.method, m.name].some((v) => v.toLowerCase().includes(q))),
+      endpoints: m.endpoints.filter((e) => [e.path, e.summary, e.permission, scopesOf(e).join(" "), e.method, m.name].some((v) => v.toLowerCase().includes(q))),
     })).filter((m) => m.endpoints.length > 0);
   }, [query]);
 

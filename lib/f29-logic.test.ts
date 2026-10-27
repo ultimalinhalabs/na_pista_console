@@ -6,7 +6,7 @@ import { activeNavPath, visibleNav } from "./navigation";
 import { roleCan, rolePermissions } from "./permissions";
 import { platformRoleCan } from "./platformPermissions";
 import { statusInfo } from "./status";
-import { API_MODULES, allEndpoints } from "./integration/apiCatalog";
+import { API_MODULES, allEndpoints, scopesOf } from "./integration/apiCatalog";
 import { describeScope, groupScopes } from "./integration/scopes";
 import { localDate, localDateTime } from "./datetime";
 
@@ -115,9 +115,24 @@ describe("API catalog consistency (Phase 8 documentation derived from the backen
     expect(new Set(endpoints.map((e) => e.id)).size).toBe(endpoints.length);
   });
 
-  it("reads require catalog.read and every write requires catalog.write (the backend's requireAuthorized pairs)", () => {
-    for (const e of endpoints) {
-      expect(e.scope, e.id).toBe(e.method === "GET" ? "catalog.read" : "catalog.write");
+  it("scopes mirror the backend (Na Pista ADR-072/073): personal data has its own scopes, everything else catalog.*", () => {
+    const expected = (e: (typeof endpoints)[number]): string[] => {
+      const moduleId = e.id.split(".")[0]!;
+      if (e.id === "appointments.slots") return ["catalog.read"]; // free slots: no personal data
+      if (e.id === "orders.create") return ["order.create", "order.write"];
+      if (e.id === "orders.get") return ["order.read", "order.create"];
+      if (e.id === "customers.create") return ["customer.create", "customer.write"];
+      const resource = { customers: "customer", orders: "order", appointments: "appointment" }[moduleId] ?? "catalog";
+      return [`${resource}.${e.method === "GET" ? "read" : "write"}`];
+    };
+    for (const e of endpoints) expect(scopesOf(e), e.id).toEqual(expected(e));
+  });
+
+  it("the three creates an interface retries document the Idempotency-Key", () => {
+    for (const id of ["orders.create", "customers.create", "inventory.move"]) {
+      const e = endpoints.find((x) => x.id === id)!;
+      expect(e.notes, id).toMatch(/Idempotency-Key/);
+      expect(e.errors, id).toContain("400 IDEMPOTENCY_KEY_REQUIRED");
     }
   });
 
@@ -139,7 +154,9 @@ describe("scopes (Phase 8)", () => {
     expect(describeScope("catalog.read").forIntegrations).toBe(true);
     expect(describeScope("catalog.write").usage).toMatch(/escrita em \d+ endpoints/);
     expect(describeScope("usage.write").forIntegrations).toBe(false);
-    expect(describeScope("customer.read").usage).toMatch(/Não é verificado/);
+    expect(describeScope("customer.read").usage).toMatch(/leitura em \d+ endpoints da Na Pista API \(customers\)/);
+    expect(describeScope("order.create").usage).toMatch(/criação em 2 endpoints da Na Pista API \(orders\)/);
+    expect(describeScope("payment.read").usage).toMatch(/Não é verificado/);
   });
 
   it("groups by domain with integration-relevant groups first", () => {

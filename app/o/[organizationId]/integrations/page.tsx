@@ -6,7 +6,7 @@ import { useSession } from "../../../../lib/session/SessionContext";
 import { platformRoleCan } from "../../../../lib/platformPermissions";
 import { PLATFORM_API_URL } from "../../../../lib/api/platformClient";
 import { getApiRequestUsage } from "../../../../lib/api/platform";
-import { API_MODULES } from "../../../../lib/integration/apiCatalog";
+import { API_MODULES, scopesOf, type ApiEndpoint } from "../../../../lib/integration/apiCatalog";
 import { useAsync } from "../../../../lib/useAsync";
 import { formatCount } from "../../../../lib/format";
 import { PageHeader, Section } from "../../../../components/patterns/Page";
@@ -22,6 +22,18 @@ const NA_PISTA_API_URL = process.env.NEXT_PUBLIC_NA_PISTA_API_URL ?? "";
  * middleware/authenticate.ts), the module/scope map derived from the
  * backend routes, and the real `api_requests` meter. No secrets.
  */
+/** The distinct scopes a set of endpoints accepts (alternatives included), as code chips; "—" when none. */
+function scopeCell(endpoints: ApiEndpoint[]) {
+  const scopes = [...new Set(endpoints.flatMap(scopesOf))].sort();
+  if (scopes.length === 0) return "—";
+  return scopes.map((s, i) => (
+    <span key={s}>
+      {i > 0 ? " " : null}
+      <code className="mono">{s}</code>
+    </span>
+  ));
+}
+
 export default function IntegrationsPage() {
   const params = useParams<{ organizationId: string }>();
   const org = params.organizationId;
@@ -80,8 +92,11 @@ export default function IntegrationsPage() {
           <div className="card stack-sm">
             <strong>Integrações (serviços)</strong>
             <span className="muted" style={{ fontSize: 13 }}>
-              Credencial de serviço <code className="mono">ulk_&lt;id&gt;.&lt;segredo&gt;</code> criada em <Link href={`${base}/credentials`}>Credenciais</Link>, com âmbitos{" "}
-              <code className="mono">catalog.read</code> (leitura) e/ou <code className="mono">catalog.write</code> (escrita). Só funciona para esta organização.
+              Credencial de serviço <code className="mono">ulk_&lt;id&gt;.&lt;segredo&gt;</code> da aplicação Na Pista, criada em <Link href={`${base}/credentials`}>Credenciais</Link>, só com os
+              âmbitos de que precisa: <code className="mono">catalog.*</code> (catálogo, stock, agenda), <code className="mono">customer.*</code>, <code className="mono">order.*</code> e{" "}
+              <code className="mono">appointment.*</code> (dados pessoais). Para uma interface de cliente:{" "}
+              <code className="mono">catalog.read</code>, <code className="mono">customer.create</code> e <code className="mono">order.create</code>. Só funciona para esta organização;
+              criar pedidos, clientes ou movimentos exige o cabeçalho <code className="mono">Idempotency-Key</code>.
             </span>
           </div>
         </div>
@@ -93,14 +108,14 @@ export default function IntegrationsPage() {
         </p>
       </Section>
 
-      <Section title="Módulos disponíveis" description="Cada módulo exige o direito catalog.enabled na subscrição da organização. Derivado das rotas reais da API." actions={<Link href={`${base}/docs`}>Documentação completa</Link>}>
+      <Section title="Módulos disponíveis" description="Cada módulo exige o seu direito na subscrição da organização (catalog.enabled, orders.enabled, customers.enabled, services.enabled). Derivado das rotas reais da API." actions={<Link href={`${base}/docs`}>Documentação completa</Link>}>
         <DataTable
           rows={API_MODULES}
           rowKey={(m) => m.id}
           columns={[
             { key: "module", header: "Módulo", cell: (m) => <Link href={`${base}/docs#${m.id}`}>{m.name}</Link> },
-            { key: "read", header: "Leitura", cell: (m) => (m.endpoints.some((e) => e.scope === "catalog.read") ? <code className="mono">catalog.read</code> : "—") },
-            { key: "write", header: "Escrita", cell: (m) => (m.endpoints.some((e) => e.scope === "catalog.write") ? <code className="mono">catalog.write</code> : "—") },
+            { key: "read", header: "Leitura", cell: (m) => scopeCell(m.endpoints.filter((e) => e.method === "GET")) },
+            { key: "write", header: "Escrita", cell: (m) => scopeCell(m.endpoints.filter((e) => e.method !== "GET")) },
             { key: "endpoints", header: "Endpoints", numeric: true, cell: (m) => m.endpoints.length },
           ]}
         />

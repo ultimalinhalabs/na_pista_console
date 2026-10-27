@@ -27,8 +27,8 @@ export interface ApiEndpoint {
   summary: string;
   /** Na Pista permission checked for human members */
   permission: string;
-  /** UL Platform service scope checked for service credentials */
-  scope: "catalog.read" | "catalog.write";
+  /** UL Platform service scope(s) for service credentials — several = any one of them is enough (Na Pista ADR-072/073). */
+  scope: string | string[];
   query?: ApiField[];
   body?: ApiField[];
   success: string;
@@ -111,20 +111,22 @@ export const API_MODULES: ApiModule[] = [
     name: "Clientes",
     description: "Clientes de negócio da organização (não são utilizadores da UL Platform). Arquivar = DELETE.",
     endpoints: [
-      { id: "customers.list", method: "GET", path: `${ORG}/customers`, summary: "Listar clientes", permission: "customers.read", scope: "catalog.read", query: [status("ACTIVE | ARCHIVED"), qField, limit()], success: "200 Customer[]" },
+      { id: "customers.list", method: "GET", path: `${ORG}/customers`, summary: "Listar clientes", permission: "customers.read", scope: "customer.read", query: [status("ACTIVE | ARCHIVED"), qField, limit()], success: "200 Customer[]" },
       {
         id: "customers.create",
         method: "POST",
         path: `${ORG}/customers`,
         summary: "Criar cliente",
         permission: "customers.create",
-        scope: "catalog.write",
+        scope: ["customer.create", "customer.write"],
         body: [{ name: "name", type: "string", required: true }, { name: "email", type: "email ≤320" }, { name: "phone", type: "string" }, { name: "notes", type: "string" }],
         success: "201 Customer",
+        errors: ["400 IDEMPOTENCY_KEY_REQUIRED", "409 IDEMPOTENCY_KEY_REUSED"],
+        notes: "Credenciais de serviço: cabeçalho Idempotency-Key obrigatório (repetir o mesmo pedido com a mesma chave devolve o mesmo recurso; outra chave = nova operação). customer.create só cria (interface de cliente); customer.write também altera e arquiva.",
       },
-      { id: "customers.get", method: "GET", path: `${ORG}/customers/{customerId}`, summary: "Obter cliente", permission: "customers.read", scope: "catalog.read", success: "200 Customer", errors: ["404 NOT_FOUND"] },
-      { id: "customers.update", method: "PATCH", path: `${ORG}/customers/{customerId}`, summary: "Actualizar cliente", permission: "customers.update", scope: "catalog.write", body: [{ name: "name", type: "string" }, { name: "email", type: "email | null" }, { name: "phone", type: "string | null" }, { name: "notes", type: "string | null" }, status("ACTIVE | ARCHIVED")], success: "200 Customer" },
-      { id: "customers.archive", method: "DELETE", path: `${ORG}/customers/{customerId}`, summary: "Arquivar cliente", permission: "customers.delete", scope: "catalog.write", success: "200 Customer" },
+      { id: "customers.get", method: "GET", path: `${ORG}/customers/{customerId}`, summary: "Obter cliente", permission: "customers.read", scope: "customer.read", success: "200 Customer", errors: ["404 NOT_FOUND"] },
+      { id: "customers.update", method: "PATCH", path: `${ORG}/customers/{customerId}`, summary: "Actualizar cliente", permission: "customers.update", scope: "customer.write", body: [{ name: "name", type: "string" }, { name: "email", type: "email | null" }, { name: "phone", type: "string | null" }, { name: "notes", type: "string | null" }, status("ACTIVE | ARCHIVED")], success: "200 Customer" },
+      { id: "customers.archive", method: "DELETE", path: `${ORG}/customers/{customerId}`, summary: "Arquivar cliente", permission: "customers.delete", scope: "customer.write", success: "200 Customer" },
     ],
   },
   {
@@ -144,8 +146,8 @@ export const API_MODULES: ApiModule[] = [
         scope: "catalog.write",
         body: [{ name: "type", type: "RECEIPT | ADJUSTMENT_IN | ADJUSTMENT_OUT", required: true }, { name: "quantity", type: "decimal string > 0", required: true }, { name: "reason", type: "string ≤500" }],
         success: "201 StockMovement",
-        errors: ["409 INSUFFICIENT_STOCK", "409 PRODUCT_ARCHIVED", "404 PRODUCT_NOT_FOUND"],
-        notes: "A permissão depende do tipo: RECEIPT exige inventory.create; ajustes exigem inventory.update.",
+        errors: ["409 INSUFFICIENT_STOCK", "409 PRODUCT_ARCHIVED", "404 PRODUCT_NOT_FOUND", "400 IDEMPOTENCY_KEY_REQUIRED", "409 IDEMPOTENCY_KEY_REUSED"],
+        notes: "A permissão depende do tipo: RECEIPT exige inventory.create; ajustes exigem inventory.update. Credenciais de serviço: cabeçalho Idempotency-Key obrigatório (repetir o mesmo pedido com a mesma chave devolve o mesmo recurso; outra chave = nova operação).",
       },
     ],
   },
@@ -154,26 +156,27 @@ export const API_MODULES: ApiModule[] = [
     name: "Pedidos",
     description: "DRAFT → CONFIRMED → COMPLETED; CANCELED a partir de DRAFT ou CONFIRMED. Preço e nome dos artigos são instantâneos (snapshots) do produto.",
     endpoints: [
-      { id: "orders.list", method: "GET", path: `${ORG}/orders`, summary: "Listar pedidos", permission: "orders.read", scope: "catalog.read", query: [status("DRAFT | CONFIRMED | COMPLETED | CANCELED"), { name: "customerId", type: "uuid" }, limit()], success: "200 Order[] (sem artigos)" },
+      { id: "orders.list", method: "GET", path: `${ORG}/orders`, summary: "Listar pedidos", permission: "orders.read", scope: "order.read", query: [status("DRAFT | CONFIRMED | COMPLETED | CANCELED"), { name: "customerId", type: "uuid" }, limit()], success: "200 Order[] (sem artigos)" },
       {
         id: "orders.create",
         method: "POST",
         path: `${ORG}/orders`,
         summary: "Criar pedido (DRAFT)",
         permission: "orders.create",
-        scope: "catalog.write",
+        scope: ["order.create", "order.write"],
         body: [{ name: "customerId", type: "uuid" }, { name: "items", type: "{ productId: uuid, quantity: decimal string }[] ≤100" }],
         success: "201 Order",
-        errors: ["409 PRODUCT_PRICE_REQUIRED", "409 PRODUCT_ARCHIVED", "409 CUSTOMER_ARCHIVED"],
+        errors: ["409 PRODUCT_PRICE_REQUIRED", "409 PRODUCT_ARCHIVED", "409 CUSTOMER_ARCHIVED", "400 IDEMPOTENCY_KEY_REQUIRED", "409 IDEMPOTENCY_KEY_REUSED"],
+        notes: "Credenciais de serviço: cabeçalho Idempotency-Key obrigatório (repetir o mesmo pedido com a mesma chave devolve o mesmo recurso; outra chave = nova operação). order.create só cria (interface de cliente: não confirma, não cancela, não lista); order.write faz tudo.",
       },
-      { id: "orders.get", method: "GET", path: `${ORG}/orders/{orderId}`, summary: "Obter pedido (com artigos)", permission: "orders.read", scope: "catalog.read", success: "200 Order", errors: ["404 ORDER_NOT_FOUND"] },
-      { id: "orders.update", method: "PATCH", path: `${ORG}/orders/{orderId}`, summary: "Alterar cliente (só DRAFT)", permission: "orders.update", scope: "catalog.write", body: [{ name: "customerId", type: "uuid | null" }], success: "200 Order", errors: ["409 INVALID_ORDER_STATE"] },
-      { id: "orders.items.add", method: "POST", path: `${ORG}/orders/{orderId}/items`, summary: "Adicionar artigo (só DRAFT)", permission: "orders.update", scope: "catalog.write", body: [{ name: "productId", type: "uuid", required: true }, { name: "quantity", type: "decimal string", required: true }], success: "201 Order" },
-      { id: "orders.items.update", method: "PATCH", path: `${ORG}/orders/{orderId}/items/{itemId}`, summary: "Alterar quantidade (só DRAFT)", permission: "orders.update", scope: "catalog.write", body: [{ name: "quantity", type: "decimal string", required: true }], success: "200 Order" },
-      { id: "orders.items.remove", method: "DELETE", path: `${ORG}/orders/{orderId}/items/{itemId}`, summary: "Remover artigo (só DRAFT)", permission: "orders.update", scope: "catalog.write", success: "200 Order" },
-      { id: "orders.confirm", method: "POST", path: `${ORG}/orders/{orderId}/confirm`, summary: "Confirmar (consome stock)", permission: "orders.update", scope: "catalog.write", success: "200 Order", errors: ["409 EMPTY_ORDER", "409 INSUFFICIENT_STOCK", "409 INVALID_ORDER_STATE"] },
-      { id: "orders.cancel", method: "POST", path: `${ORG}/orders/{orderId}/cancel`, summary: "Cancelar (repõe stock se confirmado)", permission: "orders.update", scope: "catalog.write", success: "200 Order", errors: ["409 INVALID_ORDER_STATE"] },
-      { id: "orders.complete", method: "POST", path: `${ORG}/orders/{orderId}/complete`, summary: "Concluir (só CONFIRMED)", permission: "orders.update", scope: "catalog.write", success: "200 Order", errors: ["409 INVALID_ORDER_STATE"] },
+      { id: "orders.get", method: "GET", path: `${ORG}/orders/{orderId}`, summary: "Obter pedido (com artigos)", permission: "orders.read", scope: ["order.read", "order.create"], success: "200 Order", errors: ["404 ORDER_NOT_FOUND"], notes: "Com order.create (sem order.read) só devolve os pedidos criados por essa mesma credencial; qualquer outro → 404." },
+      { id: "orders.update", method: "PATCH", path: `${ORG}/orders/{orderId}`, summary: "Alterar cliente (só DRAFT)", permission: "orders.update", scope: "order.write", body: [{ name: "customerId", type: "uuid | null" }], success: "200 Order", errors: ["409 INVALID_ORDER_STATE"] },
+      { id: "orders.items.add", method: "POST", path: `${ORG}/orders/{orderId}/items`, summary: "Adicionar artigo (só DRAFT)", permission: "orders.update", scope: "order.write", body: [{ name: "productId", type: "uuid", required: true }, { name: "quantity", type: "decimal string", required: true }], success: "201 Order" },
+      { id: "orders.items.update", method: "PATCH", path: `${ORG}/orders/{orderId}/items/{itemId}`, summary: "Alterar quantidade (só DRAFT)", permission: "orders.update", scope: "order.write", body: [{ name: "quantity", type: "decimal string", required: true }], success: "200 Order" },
+      { id: "orders.items.remove", method: "DELETE", path: `${ORG}/orders/{orderId}/items/{itemId}`, summary: "Remover artigo (só DRAFT)", permission: "orders.update", scope: "order.write", success: "200 Order" },
+      { id: "orders.confirm", method: "POST", path: `${ORG}/orders/{orderId}/confirm`, summary: "Confirmar (consome stock)", permission: "orders.update", scope: "order.write", success: "200 Order", errors: ["409 EMPTY_ORDER", "409 INSUFFICIENT_STOCK", "409 INVALID_ORDER_STATE"] },
+      { id: "orders.cancel", method: "POST", path: `${ORG}/orders/{orderId}/cancel`, summary: "Cancelar (repõe stock se confirmado)", permission: "orders.update", scope: "order.write", success: "200 Order", errors: ["409 INVALID_ORDER_STATE"] },
+      { id: "orders.complete", method: "POST", path: `${ORG}/orders/{orderId}/complete`, summary: "Concluir (só CONFIRMED)", permission: "orders.update", scope: "order.write", success: "200 Order", errors: ["409 INVALID_ORDER_STATE"] },
     ],
   },
   {
@@ -236,17 +239,17 @@ export const API_MODULES: ApiModule[] = [
         path: `${ORG}/appointments`,
         summary: "Criar marcação (fica SCHEDULED)",
         permission: "appointments.create",
-        scope: "catalog.write",
+        scope: "appointment.write",
         body: [{ name: "customerId", type: "uuid", required: true }, { name: "professionalId", type: "uuid", required: true }, { name: "serviceId", type: "uuid", required: true }, { name: "startAt", type: "ISO-8601 com Z/offset, minuto certo", required: true }, { name: "notes", type: "string ≤2000" }],
         success: "201 Appointment",
         errors: ["409 APPOINTMENT_CONFLICT", "409 APPOINTMENT_OUTSIDE_AVAILABILITY", "400 BOOKING_HORIZON_EXCEEDED", "409 TIMEZONE_NOT_CONFIGURED", "409 CUSTOMER_ARCHIVED / PROFESSIONAL_ARCHIVED / SERVICE_ARCHIVED"],
       },
-      { id: "appointments.list", method: "GET", path: `${ORG}/appointments`, summary: "Listar marcações (intervalo obrigatório ≤ 31 dias)", permission: "appointments.read", scope: "catalog.read", query: [{ name: "from", type: "YYYY-MM-DD (local)", required: true }, { name: "to", type: "YYYY-MM-DD (local)", required: true }, { name: "professionalId", type: "uuid" }, { name: "customerId", type: "uuid" }, { name: "serviceId", type: "uuid" }, status("SCHEDULED | COMPLETED | CANCELED | NO_SHOW"), limit(500, 200)], success: "200 Appointment[]" },
-      { id: "appointments.get", method: "GET", path: `${ORG}/appointments/{appointmentId}`, summary: "Obter marcação", permission: "appointments.read", scope: "catalog.read", success: "200 Appointment", errors: ["404 APPOINTMENT_NOT_FOUND"] },
-      { id: "appointments.update", method: "PATCH", path: `${ORG}/appointments/{appointmentId}`, summary: "Reagendar (startAt/professionalId) ou notas", permission: "appointments.update", scope: "catalog.write", body: [{ name: "startAt", type: "ISO-8601" }, { name: "professionalId", type: "uuid" }, { name: "notes", type: "string | null" }], success: "200 Appointment", errors: ["409 APPOINTMENT_CONFLICT", "409 INVALID_APPOINTMENT_STATE"] },
-      { id: "appointments.cancel", method: "POST", path: `${ORG}/appointments/{appointmentId}/cancel`, summary: "Cancelar", permission: "appointments.update", scope: "catalog.write", body: [{ name: "reason", type: "string 1..500" }], success: "200 Appointment", errors: ["409 INVALID_APPOINTMENT_STATE"] },
-      { id: "appointments.complete", method: "POST", path: `${ORG}/appointments/{appointmentId}/complete`, summary: "Concluir (a partir da hora de início)", permission: "appointments.update", scope: "catalog.write", success: "200 Appointment", errors: ["409 APPOINTMENT_COMPLETION_TOO_EARLY", "409 INVALID_APPOINTMENT_STATE"] },
-      { id: "appointments.noShow", method: "POST", path: `${ORG}/appointments/{appointmentId}/no-show`, summary: "Registar falta (a partir da hora de início, sem corpo)", permission: "appointments.update", scope: "catalog.write", success: "200 Appointment", errors: ["409 APPOINTMENT_NO_SHOW_TOO_EARLY", "409 INVALID_APPOINTMENT_STATE"] },
+      { id: "appointments.list", method: "GET", path: `${ORG}/appointments`, summary: "Listar marcações (intervalo obrigatório ≤ 31 dias)", permission: "appointments.read", scope: "appointment.read", query: [{ name: "from", type: "YYYY-MM-DD (local)", required: true }, { name: "to", type: "YYYY-MM-DD (local)", required: true }, { name: "professionalId", type: "uuid" }, { name: "customerId", type: "uuid" }, { name: "serviceId", type: "uuid" }, status("SCHEDULED | COMPLETED | CANCELED | NO_SHOW"), limit(500, 200)], success: "200 Appointment[]" },
+      { id: "appointments.get", method: "GET", path: `${ORG}/appointments/{appointmentId}`, summary: "Obter marcação", permission: "appointments.read", scope: "appointment.read", success: "200 Appointment", errors: ["404 APPOINTMENT_NOT_FOUND"] },
+      { id: "appointments.update", method: "PATCH", path: `${ORG}/appointments/{appointmentId}`, summary: "Reagendar (startAt/professionalId) ou notas", permission: "appointments.update", scope: "appointment.write", body: [{ name: "startAt", type: "ISO-8601" }, { name: "professionalId", type: "uuid" }, { name: "notes", type: "string | null" }], success: "200 Appointment", errors: ["409 APPOINTMENT_CONFLICT", "409 INVALID_APPOINTMENT_STATE"] },
+      { id: "appointments.cancel", method: "POST", path: `${ORG}/appointments/{appointmentId}/cancel`, summary: "Cancelar", permission: "appointments.update", scope: "appointment.write", body: [{ name: "reason", type: "string 1..500" }], success: "200 Appointment", errors: ["409 INVALID_APPOINTMENT_STATE"] },
+      { id: "appointments.complete", method: "POST", path: `${ORG}/appointments/{appointmentId}/complete`, summary: "Concluir (a partir da hora de início)", permission: "appointments.update", scope: "appointment.write", success: "200 Appointment", errors: ["409 APPOINTMENT_COMPLETION_TOO_EARLY", "409 INVALID_APPOINTMENT_STATE"] },
+      { id: "appointments.noShow", method: "POST", path: `${ORG}/appointments/{appointmentId}/no-show`, summary: "Registar falta (a partir da hora de início, sem corpo)", permission: "appointments.update", scope: "appointment.write", success: "200 Appointment", errors: ["409 APPOINTMENT_NO_SHOW_TOO_EARLY", "409 INVALID_APPOINTMENT_STATE"] },
       { id: "appointments.slots", method: "GET", path: `${ORG}/professionals/{professionalId}/bookable-slots`, summary: "Horários reserváveis de um dia (indicativos)", permission: "appointments.read", scope: "catalog.read", query: [{ name: "date", type: "YYYY-MM-DD", required: true }, { name: "serviceId", type: "uuid", required: true }], success: "200 { timezone, date, durationMinutes, slots[] }" },
     ],
   },
@@ -266,4 +269,9 @@ export const COMMON_ERRORS: { status: number; code: string; meaning: string }[] 
 
 export function allEndpoints(): ApiEndpoint[] {
   return API_MODULES.flatMap((m) => m.endpoints);
+}
+
+/** The scopes of an endpoint as a list (a single scope or the accepted alternatives). */
+export function scopesOf(endpoint: Pick<ApiEndpoint, "scope">): string[] {
+  return typeof endpoint.scope === "string" ? [endpoint.scope] : endpoint.scope;
 }
